@@ -1,0 +1,297 @@
+/* ============================================================
+   D.A.B.S.y — settings-engine.js
+   One sheet, grouped sections. Opened from the Settings bubble.
+   There is deliberately NO API-key field: the AI row only shows status.
+   ============================================================ */
+(function(){
+  const D = window.DABSy;
+  const ui = D.ui, memory = D.memory, bus = D.bus;
+  const el = ui.el;
+  const VERSION = D.config.version;
+  let devTaps = 0, devTimer = null;
+
+  function switchRow(title, sub, checked, onChange, extra){
+    const input = el("input", { type: "checkbox", "aria-label": title }); input.checked = !!checked;
+    input.addEventListener("change", () => onChange(input.checked, input));
+    return el("div", { class: "row" }, el("div", { class: "grow" }, el("div", { class: "t" }, title), sub ? el("div", { class: "s" }, sub) : null), extra || null, el("label", { class: "switch" }, input, el("i")));
+  }
+  // compact segmented control (radio group) used for Theme
+  function segmented(label, options, value, onChange){
+    const wrap = el("div", { class: "seg", role: "radiogroup", "aria-label": label });
+    const paint = v => [...wrap.children].forEach(b => { const on = b.dataset.v === v; b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); });
+    options.forEach(([v, text, off]) => wrap.append(el("button", { type: "button", role: "radio", class: "seg-b", "data-v": v, "aria-disabled": off ? "true" : null, title: off || null,
+      onclick: () => { if(off){ ui.toast({ text: off }); return; } paint(v); onChange(v); } }, text)));
+    paint(value);
+    return wrap;
+  }
+  function section(id, title, ...kids){
+    return el("section", { id: "set-" + id, class: "set-sec" }, el("div", { class: "section-title" }, title), ...kids);
+  }
+
+  async function open(which){
+    const sh = ui.sheet({ title: "Settings", className: "settings", onClose: () => offs.forEach(f => f()) });
+    const offs = [];
+    const body = sh.body;
+
+    /* ---------- DABSy AI ---------- */
+    const aiRow = el("div", { class: "row" });
+    const aiChip = el("span", { class: "chip" });
+    const aiDetail = el("div", { class: "s" });
+    function paintAI(){
+      const i = D.ai.statusInfo();
+      aiChip.className = "chip " + (i.state === "ready" ? "ok" : i.state === "checking" ? "" : "warn");
+      aiChip.textContent = i.label;
+      aiDetail.textContent = i.state === "ready" ? "Chat, explanations and web research are available." : i.detail + " Planning, tasks and reminders still work.";
+    }
+    aiRow.append(el("span", { html: ui.icon("sparkle", 22) }), el("div", { class: "grow" }, el("div", { class: "t" }, "DABSy AI"), aiDetail), aiChip);
+    paintAI(); offs.push(bus.on("ai:status", paintAI));
+    const aiBtn = el("button", { class: "btn sm ghost", type: "button", onclick: () => { D.ai.check(); } }, "Check again");
+    const aiNote = el("p", { class: "hint" }, "There's nothing to set up on your side. The AI runs through DABSy's own service, so no keys live in this app.");
+
+    /* ---------- wardrobe ---------- */
+    const wardrobe = el("div", {});
+    function paintWardrobe(){
+      wardrobe.innerHTML = "";
+      const cur = D.outfits.current();
+
+      if(cur.form === "magic"){
+        wardrobe.append(el("p", { class: "hint" }, "In Magic World DABSy wears her own bow tie from the artwork. Bow-tie colours apply in the Classic black-screen look. Glasses, headphones, hats and the rest still work in both."));
+      } else wardrobe.append(el("div", { class: "section-title" }, "Bow tie colour"));
+      const tieRow = el("div", { class: "tie-row", role: "radiogroup", "aria-label": "Bow tie colour" });
+      D.outfits.tiePalettes().forEach(p => {
+        const on = cur.tie === p.id;
+        const sw = el("button", { class: "tie-sw" + (on ? " on" : ""), type: "button", role: "radio", "aria-checked": String(on), "aria-label": p.name, title: p.name,
+          onclick: () => { D.outfits.setTie(p.id); D.face.react("perk"); paintWardrobe(); } });
+        sw.style.setProperty("--sw", p.c ? `linear-gradient(135deg,${p.c[0]},${p.c[1]})` : "conic-gradient(#cdb9ff,#7db3ff,#8fffe6,#ffd27a,#ff8aa0,#cdb9ff)");
+        tieRow.append(sw);
+      });
+      if(cur.form !== "magic") wardrobe.append(tieRow);
+      wardrobe.append(el("div", { class: "section-title" }, "Outfits"));
+      const grid = el("div", { class: "wd-grid" });
+      D.outfits.list().forEach(o => {
+        const hidden = !o.unlocked && (o.unlock && o.unlock.type === "egg");
+        const tile = el("button", { class: "wd-tile" + (cur.outfit === o.id ? " on" : "") + (o.equippable ? "" : " locked"), type: "button", "aria-pressed": String(cur.outfit === o.id),
+          "aria-label": (hidden ? "Mystery outfit" : o.name) + (o.equippable ? "" : ", " + (o.note || "locked")),
+          onclick: () => { if(!o.equippable){ ui.toast({ text: o.note || "Locked" }); return; } D.outfits.equipOutfit(o.id); D.face.react("perk"); paintWardrobe(); } });
+        tile.innerHTML = (hidden ? '<div class="wd-q">?</div>' : D.outfits.preview(o.id)) + `<span class="wd-name">${hidden ? "Mystery" : ui.escapeHtml(o.name)}</span>` + (o.equippable ? "" : `<span class="wd-note">${ui.escapeHtml(o.note || "")}</span>`);
+        grid.append(tile);
+      });
+      wardrobe.append(grid);
+      wardrobe.append(el("div", { class: "section-title" }, "Accessories"));
+      const accGrid = el("div", { class: "wd-grid" });
+      D.outfits.listAccessories().forEach(a => {
+        const on = cur.acc[a.slot] === a.id;
+        const hidden = !a.unlocked && a.unlock && a.unlock.type === "egg";
+        const tile = el("button", { class: "wd-tile" + (on ? " on" : "") + (a.equippable ? "" : " locked"), type: "button", "aria-pressed": String(on), "aria-label": (hidden ? "Mystery accessory" : a.name) + (a.equippable ? "" : ", " + (a.note || "locked")),
+          onclick: () => { if(!a.equippable){ ui.toast({ text: a.note || "Locked" }); return; } D.outfits.equipAccessory(a.slot, on ? null : a.id); paintWardrobe(); } });
+        tile.innerHTML = (hidden ? '<div class="wd-q">?</div>' : D.outfits.preview(a.id, true)) + `<span class="wd-name">${hidden ? "Mystery" : ui.escapeHtml(a.name)}</span>` + (a.equippable ? "" : `<span class="wd-note">${ui.escapeHtml(a.note || "")}</span>`);
+        accGrid.append(tile);
+      });
+      wardrobe.append(accGrid, el("p", { class: "hint" }, "Some things unlock by using DABSy. A few are hidden."));
+    }
+    paintWardrobe();
+
+    /* ---------- WALLPAPER (v10.2) ---------- */
+    const worldBox = el("div", {});
+    let picking = false;
+    async function chooseWallpaper(id){
+      if(picking) return; picking = true;
+      const W = D.world;
+      try{
+        if(id === "none"){ D.outfits.setForm("minimal"); ui.toast({ text: "Black screen. Just her eyes and bow tie." }); }
+        else{
+          const h = W.habitats().find(x => x.id === id);
+          const ok = await W.setHabitat(id);
+          if(!ok){ ui.toast({ text: "That wallpaper's picture couldn't load, so I kept your current one." }); return; }
+          D.outfits.setForm("magic");
+          ui.toast({ text: (h ? h.name : "Wallpaper") + " is on. She rests on " + W.habitat().spots.find(x => x.home).label + "." });
+        }
+        D.face.react("perk");
+      } finally { picking = false; paintWorld(); paintWardrobe(); }
+    }
+    function tilePicture(h){
+      const light = D.theme.resolved() === "light" ? "day" : "night", v = h.variants[light] || h.variants.night;
+      const base = v.from ? h.variants[v.from] : v, src = base.src;
+      return /^data:/.test(src) ? src : D.world.assetUrl(src.split("/").pop());
+    }
+    function paintWorld(){
+      worldBox.innerHTML = "";
+      const W = D.world, form = D.outfits.form(), cur = form === "magic" ? W.habitatId() : "none";
+      const grid = el("div", { class: "wd-grid wd-grid-2 wp-grid", role: "radiogroup", "aria-label": "Wallpaper" });
+      const tile = (id, name, inner, blurb) => {
+        const on = cur === id;
+        const b = el("button", { class: "wd-tile mw-tile wp-tile" + (on ? " on" : "") + (id === "none" ? " classic" : ""), type: "button", role: "radio", "aria-checked": String(on), "aria-label": name + (on ? ", selected" : ""), "data-wallpaper": id,
+          onclick: () => chooseWallpaper(id) });
+        if(typeof inner === "string") b.innerHTML = inner; else b.append(inner);
+        b.append(el("span", { class: "wd-name" }, name), blurb ? el("span", { class: "wp-blurb" }, blurb) : null, on ? el("span", { class: "wp-check", "aria-hidden": "true" }, "✓") : null);
+        return b;
+      };
+      grid.append(tile("none", "Black screen", D.outfits.previewForm(), "The original look"));
+      W.habitats().forEach(h => {
+        const img = el("img", { src: tilePicture(h), alt: "", loading: "lazy", onerror: ev => { ev.target.replaceWith(el("div", { class: "wp-broken" }, "Picture unavailable")); } });
+        grid.append(tile(h.id, h.name, img, h.blurb));
+      });
+      worldBox.append(grid);
+      if(form !== "magic"){ worldBox.append(el("p", { class: "hint" }, "Black screen is on. Pick a room and DABSy moves in. Each room has a real spot for her: a pillow, the desk or a rock by the lake.")); return; }
+      const hab = W.habitat(), home = hab.spots.find(x => x.home);
+      worldBox.append(el("p", { class: "hint" }, "In " + hab.name + " she rests on " + home.label + (W.roam() === "off" ? "." : ", and sometimes visits " + hab.spots.filter(x => !x.home).map(x => x.label).join(", ") + ".")));
+      worldBox.append(el("div", { class: "row col" }, el("div", { class: "grow" }, el("div", { class: "t" }, "Wandering"),
+        el("div", { class: "s" }, "Off keeps her on her resting spot. Calm or Lively let her stroll to the other real spots in the room now and then. She stays put while you chat, study or use a panel, and when Reduce motion is on.")),
+        segmented("Wandering", [["off", "Off"], ["calm", "Calm"], ["lively", "Lively"]], W.roam(), v => { W.setRoam(v); paintWorld(); })));
+      worldBox.append(el("div", { class: "popup-actions", style: "justify-content:flex-start" }, el("button", { class: "btn sm primary", type: "button", onclick: () => sh.close() }, "Done, show me the room")));
+    }
+    paintWorld();
+    offs.push(bus.on("outfit:form", () => paintWorld()));
+    offs.push(bus.on("theme:changed", () => paintWorld()));
+
+    /* ---------- Day / Night (v10.2: one manual control; Auto only if you pick it) ---------- */
+    const appearance = section("appearance", "Day / Night",
+      el("div", { class: "row col" }, el("div", { class: "grow" }, el("div", { class: "t" }, "Mode"), el("div", { class: "s" }, "Auto follows the real time on your phone: Day from 6 am to 6 pm, Night otherwise. Choosing Day or Night yourself stays until you pick Auto again. You can also tap the sun or moon at the top left of the main screen.")),
+        (() => { const seg = segmented("Day or Night", [["day", "☀ Day"], ["night", "☾ Night"], ["auto", "Auto (real time)"]], D.theme.mode(), v => D.theme.setMode(v));
+                 offs.push(bus.on("theme:changed", () => [...seg.children].forEach(b => { const on = b.dataset.v === D.theme.mode(); b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); }))); return seg; })()));
+
+    /* ---------- widgets ---------- */
+    const widgetSection = section("widgets", "Widgets",
+      el("div", { class: "row" }, el("div", { class: "grow" }, el("div", { class: "t" }, "Glass widgets"), el("div", { class: "s" }, "Time and date, weather, today's to-dos, study plan and more. Double-tap a widget to customise it.")),
+        el("button", { class: "btn sm primary", type: "button", onclick: () => { sh.close(); setTimeout(() => D.widgets && D.widgets.openAdd(), 320); } }, "Add widget")));
+
+    /* ---------- notifications ---------- */
+    const ns = D.notify.settings();
+    const permChip = el("span", { class: "chip" });
+    D.permissions.describe("notifications").then(d => { permChip.textContent = d.text; permChip.className = "chip " + (d.state === "granted" ? "ok" : d.state === "denied" ? "bad" : ""); });
+    const qFrom = el("input", { class: "field", type: "time", value: ns.quiet.from, "aria-label": "Quiet hours start" });
+    const qTo = el("input", { class: "field", type: "time", value: ns.quiet.to, "aria-label": "Quiet hours end" });
+    const saveQuiet = () => D.notify.saveSettings({ quiet: { from: qFrom.value || "22:00", to: qTo.value || "07:00" } });
+    qFrom.onchange = saveQuiet; qTo.onchange = saveQuiet;
+    const limit = el("select", { class: "field", "aria-label": "Maximum nudges per day" }, [2, 4, 6, 8, 12].map(n => el("option", { value: n }, n + " a day")));
+    limit.value = String(ns.dailyLimit); limit.onchange = () => D.notify.saveSettings({ dailyLimit: Number(limit.value) });
+    const notifSection = section("notifications", "Notifications",
+      switchRow("Nudges from DABSy", "Gentle follow-ups about tasks. They adapt if you ignore them.", ns.enabled, v => D.notify.saveSettings({ enabled: v })),
+      switchRow("Alerts when DABSy is in the background", "Uses your phone's own notifications. Works while the app is open or recently used. A web app can't wake itself when fully closed.", ns.system && Notification.permission === "granted", async (v, input) => {
+        if(v){ const ok = await D.notify.enableSystem(); input.checked = ok; D.permissions.describe("notifications").then(d => { permChip.textContent = d.text; permChip.className = "chip " + (d.state === "granted" ? "ok" : d.state === "denied" ? "bad" : ""); }); }
+        else D.notify.saveSettings({ system: false });
+      }, permChip),
+      D.push && D.push.supported() ? switchRow("Reminders when DABSy is closed", "Sends your upcoming reminder times to your DABSy server so your phone can alert you even when the app is shut. Turn off to stop sharing them.", D.push.enabled() && Notification.permission === "granted", async (v, input) => {
+        if(v){ const r = await D.push.enable(); input.checked = !!r.ok; if(!r.ok) D.notify.ping({ title: "Couldn't turn that on", body: "Reason: " + r.error + ". Check the push setup in BACKEND.md.", actions: [] }); }
+        else D.push.disable();
+      }) : null,
+      switchRow("Daily briefing", "A short card once a day, only when there is something to say. Never during quiet hours.", memory.getSettings().dailyBriefing !== false, v => memory.saveSettings({ dailyBriefing: v })),
+      el("div", { class: "row" }, el("div", { class: "grow" }, el("div", { class: "t" }, "Quiet hours"), el("div", { class: "s" }, "No nudges in this window.")), qFrom, qTo),
+      el("div", { class: "row" }, el("div", { class: "grow" }, el("div", { class: "t" }, "Most nudges per day")), limit),
+      el("button", { class: "btn sm ghost", type: "button", onclick: () => D.notify.push({ kind: "info", title: "Test nudge", body: "This is what a nudge looks like.", actions: [{ id: "keep", label: "Nice" }] }) }, "Send a test nudge"));
+
+    /* ---------- study & learning ---------- */
+    const learnBox = el("div", {});
+    function paintLearn(){
+      learnBox.innerHTML = "";
+      const sn = D.learning.snapshot();
+      learnBox.append(el("div", { class: "row" }, el("div", { class: "grow" }, el("div", { class: "t" }, "What I've noticed"),
+        el("div", { class: "s" }, sn.sessions || sn.types.length ? (sn.summary || "Not enough yet to say anything.") + (sn.sessions ? ` Typical focus block: ${sn.blockMin} min.` : "") : "Nothing yet. I learn from the material you choose and how your sessions go.")),
+        el("button", { class: "btn sm ghost", type: "button", onclick: async () => { const v = await ui.popup({ title: "Reset what I've learned?", text: "Your tasks and sessions stay. Only my notes about your study habits are cleared.", actions: [{ label: "Keep", value: "no" }, { label: "Reset", value: "yes", kind: "primary" }], dismissValue: "no" }); if(v === "yes"){ D.learning.reset(); paintLearn(); } } }, "Reset")));
+    }
+    paintLearn();
+    const studySection = section("study", "Study & learning",
+      switchRow("Learn my study habits", "Material types you pick, usual block length, usual hours. Never what you type.", memory.getSettings().learnHabits !== false, v => memory.saveSettings({ learnHabits: v })),
+      switchRow("Use that to personalise AI answers", "Adds a one-line summary of your habits to AI requests.", memory.getSettings().personalizeAI, v => memory.saveSettings({ personalizeAI: v })),
+      switchRow("Encouragement between blocks", "Short, text-only cheers.", memory.getSettings().cheer, v => memory.saveSettings({ cheer: v })),
+      learnBox);
+
+    /* ---------- voice ---------- */
+    const sel = el("select", { class: "field", "aria-label": "DABSy's voice" });
+    const fillVoices = () => { sel.innerHTML = ""; sel.append(el("option", { value: "" }, "Automatic")); D.voice.getVoices().forEach(v => sel.append(el("option", { value: v.voiceURI }, v.name + " (" + v.lang + ")"))); sel.value = memory.getSettings().voiceURI || ""; };
+    fillVoices(); offs.push(bus.on("voice:voices-ready", fillVoices)); sel.onchange = () => memory.saveSettings({ voiceURI: sel.value });
+    const voiceSection = section("voice", "Voice",
+      switchRow("DABSy speaks replies", "Text always shows. Turn this off for silent replies.", memory.getSettings().speakReplies, v => memory.saveSettings({ speakReplies: v })),
+      el("div", { class: "row" }, el("div", { class: "grow" }, el("div", { class: "t" }, "Voice")), sel));
+
+    /* ---------- accessibility ---------- */
+    const rm = el("select", { class: "field", "aria-label": "Reduce motion" }, [["auto", "Follow my device"], ["on", "Always reduce"], ["off", "Never reduce"]].map(([v, l]) => el("option", { value: v }, l)));
+    rm.value = memory.getSettings().reduceMotion; rm.onchange = () => memory.saveSettings({ reduceMotion: rm.value });
+    const lg = el("select", { class: "field", "aria-label": "Language" }, [["auto", "Match what I write"], ["en", "English"], ["hi", "हिन्दी (Hindi)"], ["mr", "मराठी (Marathi)"]].map(([v, l]) => el("option", { value: v }, l)));
+    lg.value = memory.getSettings().replyLang; lg.onchange = () => memory.saveSettings({ replyLang: lg.value });
+    const a11y = section("access", "Accessibility",
+      el("div", { class: "row" }, el("div", { class: "grow" }, el("div", { class: "t" }, "Language"), el("div", { class: "s" }, "Used for replies, listening and speaking. Voice quality depends on the voices installed on your device.")), lg),
+      switchRow("Show on-screen buttons for gestures", "Adds Apps and Talk buttons, so nothing needs a double-tap or hold. Keyboard: Enter = chat, ↓ = apps, ↑ = tasks.", memory.getSettings().showShortcuts, v => memory.saveSettings({ showShortcuts: v })),
+      el("div", { class: "row" }, el("div", { class: "grow" }, el("div", { class: "t" }, "Reduce motion"), el("div", { class: "s" }, "Calmer creature, no bobbing bubbles.")), rm));
+
+    /* ---------- connections ---------- */
+    const conn = el("div", {});
+    (async () => {
+      const Core = window.DABSyCore, c = Core.getConnections().calendar;
+      const lvl = el("select", { class: "field", "aria-label": "Calendar permission level" }, [["read", "Read only: I can see events"], ["suggest", "Suggest: I ask before changing anything"], ["automatic", "Automatic: I can add events"]].map(([v, l]) => el("option", { value: v }, l)));
+      lvl.value = c.level || "read"; lvl.onchange = () => Core.setConnection("calendar", { level: lvl.value });
+      conn.append(switchRow("🌿 Ghibli Calendar", "Off by default. Lets me avoid clashes and, if you allow, add events.", c.enabled, v => Core.setConnection("calendar", { enabled: v })), el("div", { class: "row" }, el("div", { class: "grow s" }, "Permission level"), lvl));
+      for(const a of D.ecosystem.apps().filter(x => !x.builtin && x.id !== "calendar")){
+        const chip = el("span", { class: "chip" }, "checking…");
+        conn.append(el("div", { class: "row" }, el("span", { html: ui.icon(a.icon || "sparkle", 20) }), el("div", { class: "grow" }, el("div", { class: "t" }, a.name), el("div", { class: "s" }, "Shares data through this site's own storage")), chip));
+        D.ecosystem.probe(a).then(ok => { chip.textContent = ok ? "Reachable" : "Not reachable"; chip.className = "chip " + (ok ? "ok" : "warn"); });
+      }
+    })();
+
+    /* ---------- privacy & data ---------- */
+    const priv = section("privacy", "Privacy & data",
+      el("div", { class: "row" }, el("span", { html: ui.icon("device", 20) }), el("div", { class: "grow" }, el("div", { class: "t" }, "Stays on this device"), el("div", { class: "s" }, "Tasks, plans, sessions, outfits, settings, what I've learned, and my notification history."))),
+      el("div", { class: "row" }, el("span", { html: ui.icon("cloud", 20) }), el("div", { class: "grow" }, el("div", { class: "t" }, "Sent to DABSy AI"), el("div", { class: "s" }, "Only what you ask me or what I need to plan: your message, the subject, and a short summary of your habits (if enabled). Never keys, contacts, or location."))),
+      el("div", { class: "popup-actions", style: "justify-content:flex-start" },
+        el("button", { class: "btn sm", type: "button", onclick: () => exportData() }, "Export my data"),
+        el("button", { class: "btn sm danger", type: "button", onclick: async () => { const v = await ui.popup({ title: "Forget everything?", text: "This clears tasks, plans, sessions, outfits and everything I've learned on this device. It can't be undone.", actions: [{ label: "Keep", value: "no" }, { label: "Forget everything", value: "yes", kind: "primary" }], dismissValue: "no" }); if(v === "yes"){ memory.forgetEverything(); sh.close(); D.app.say("All clear. Fresh start.", "IDLE"); } } }, "Forget everything")));
+
+    /* ---------- floating ---------- */
+    const fl = D.floating.status();
+    const floatSec = section("floating", "Floating DABSy",
+      el("div", { class: "row" }, el("span", { html: ui.icon("device", 20) }), el("div", { class: "grow" }, el("div", { class: "t" }, fl.available ? "Available" : "Needs the Android app"), el("div", { class: "s" }, fl.reason)),
+        el("span", { class: "chip " + (fl.available ? "ok" : "warn") }, fl.available ? "On" : "Not here")));
+
+    /* ---------- help ---------- */
+    const help = section("help", "Help & Tutorial",
+      el("div", { class: "row" }, el("div", { class: "grow" }, el("div", { class: "t" }, "Replay Tutorial"), el("div", { class: "s" }, "A tiny tour of what I can do.")), el("button", { class: "btn sm primary", type: "button", onclick: () => { sh.close(); setTimeout(() => D.require("onboarding").then(o => o.start({ replay: true })), 300); } }, "Replay")),
+      el("div", { class: "row" }, el("div", { class: "grow" }, el("div", { class: "t" }, "Gestures"), el("div", { class: "s" }, "Tap an eye: chat · Tap the bow tie: today at a glance · Double-tap (bow tie): your apps · Press and hold: tasks and reminders · Stroke: pet me. If she is wandering the room, a tap calls her home first. Everything has a button alternative in Accessibility."))));
+
+    /* ---------- about ---------- */
+    const installBtn = el("button", { class: "btn sm", type: "button", hidden: true, onclick: async () => { if(await D.pwa.promptInstall()) installBtn.hidden = true; } }, "Install app");
+    if(D.pwa.canInstall()) installBtn.hidden = false;
+    offs.push(bus.on("pwa:installable", () => { installBtn.hidden = false; }));
+    const about = section("about", "About",
+      el("div", { class: "row", onclick: devTap }, el("div", { class: "grow" }, el("div", { class: "t" }, "D.A.B.S.y " + VERSION), el("div", { class: "s" }, "A study companion and hub for your study apps.")), installBtn),
+      el("button", { class: "btn sm ghost", type: "button", onclick: () => { sh.close(); D.require("games").then(g => g.open()); } }, "🎮 Play a little"));
+
+    body.append(
+      section("ai", "DABSy AI", aiRow, el("div", { class: "popup-actions", style: "justify-content:flex-start" }, aiBtn), aiNote),
+      appearance,
+      section("world", "Wallpaper", worldBox),
+      widgetSection,
+      section("wardrobe", "Wardrobe", wardrobe),
+      notifSection, studySection, voiceSection, a11y,
+      section("connections", "Connections", conn),
+      priv, floatSec, help, about);
+    if(which) setTimeout(() => { const t = body.querySelector("#set-" + which); t && t.scrollIntoView({ block: "start", behavior: "smooth" }); }, 360);
+    return sh;
+  }
+
+  /* hidden developer shortcut: tap the version 7 times to point DABSy at your own AI service URL.
+     This is a plain https URL (the address of YOUR proxy), never a secret. */
+  async function devTap(){
+    devTaps++; clearTimeout(devTimer); devTimer = setTimeout(() => { devTaps = 0; }, 2500);
+    if(devTaps < 7) return; devTaps = 0;
+    const input = ui.el("input", { type: "text", placeholder: "https://your-service.example.workers.dev", "aria-label": "Service address", value: localStorage.getItem("dabsy_dev_proxy") || "" });
+    const v = await ui.popup({ title: "Developer: service address", text: "The web address of your DABSy AI service (see BACKEND.md). Leave empty to clear. Reload afterwards.", content: input, actions: [{ label: "Cancel", value: "no" }, { label: "Save", value: "ok", kind: "primary" }], dismissValue: "no" });
+    if(v !== "ok") return;
+    const val = input.value.trim();
+    try{
+      if(!val) localStorage.removeItem("dabsy_dev_proxy");
+      else if(/^https:\/\/[^\s]+$/i.test(val)) localStorage.setItem("dabsy_dev_proxy", val.replace(/\/+$/, ""));
+      else { ui.toast({ text: "That doesn't look like an https address." }); return; }
+      ui.toast({ text: "Saved. Reloading…" }); setTimeout(() => location.reload(), 900);
+    }catch(e){}
+  }
+
+  function exportData(){
+    const data = JSON.stringify({ app: "dabsy", version: VERSION, exportedAt: new Date().toISOString(), data: memory.exportAll() }, null, 2);
+    const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+    const a = document.createElement("a"); a.href = url; a.download = "dabsy-data-" + ui.dateKey() + ".json"; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    ui.toast({ text: "Exported. The file stays on your device." });
+  }
+
+  window.DABSy.settings = { open, exportData };
+})();
