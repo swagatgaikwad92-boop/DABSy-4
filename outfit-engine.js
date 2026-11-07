@@ -1,0 +1,250 @@
+/* ============================================================
+   D.A.B.S.y — outfit-engine.js
+   Reads the data in outfits-data.js and puts it on the creature.
+
+     outfits.equipOutfit(id)          wear a base look
+     outfits.equipAccessory(slot,id)  add / remove one extra piece
+     outfits.unlock(id)               unlock (achievements / Easter eggs)
+     outfits.list() / listAccessories()   for the Wardrobe UI
+     outfits.preview(id,isAcc)        small SVG used in Wardrobe tiles
+     outfits.previewCurrent()         SVG of what DABSy is wearing right now
+     outfits.setForm("minimal"|"magic")   presentation: classic black screen | MAGIC WORLD (persisted with the wardrobe)
+     outfits.setTie(paletteId)            bow-tie colour
+
+   The creature itself has four empty SVG groups (#slot-neck, #slot-eyes,
+   #slot-ears, #slot-head). This engine only fills them — it never knows
+   what any specific outfit looks like.
+   ============================================================ */
+
+(function(){
+  const bus = window.DABSy.bus;
+  const memory = window.DABSy.memory;
+  const ui = window.DABSy.ui;
+  const { OUTFITS, ACCESSORIES, SLOTS, PLACEMENT, TIE_PALETTES, BOWS } = window.DABSy.outfitData;
+  const KEY = "wardrobe_v1";
+  const face = document.getElementById("face");
+
+  const DEFAULT_FUR = ["#7482d8", "#4552a6", "#222a66"];
+  // form: "magic" (MAGIC WORLD, opt-in) | "minimal" (the original black-screen look: floating eyes + bow tie).  tie: bow-tie palette id.
+  let state = Object.assign({ outfit: "classic", acc: { eyes: null, ears: null, head: null }, unlocked: [], form: "minimal", formChosen: false, tie: "outfit" }, memory.read(KEY, {}));
+  // CLASSIC DABSy (floating eyes + bow tie on the dark screen) is the default. Magic World is opt-in: it is honoured only if the user
+  // actually picked it (formChosen). A stale / invalid / "furry" value, or "magic" that was never chosen, falls back to Classic.
+  if(state.form !== "magic" || state.formChosen !== true) state.form = "minimal";
+  delete state.v82;
+  if(!TIE_PALETTES.some(t => t.id === state.tie)) state.tie = "outfit";
+  state.acc = Object.assign({ eyes: null, ears: null, head: null }, state.acc || {});
+
+  function save(){ memory.write(KEY, state); }
+  const byId = id => OUTFITS.find(o => o.id === id) || null;
+  const accById = id => ACCESSORIES.find(a => a.id === id) || null;
+
+  /* ---------------- progress metrics for achievement unlocks ---------------- */
+  function metric(name){
+    if(name === "sessions") return memory.read("sessions_v1", []).filter(s => s.status === "done").length;
+    if(name === "tasksDone"){
+      const t = window.DABSy.tasks ? window.DABSy.tasks.list() : [];
+      return t.reduce((n, x) => n + (x.status === "done" ? 1 : 0) + Object.values(x.occurrences || {}).filter(o => o.status === "done").length, 0);
+    }
+    if(name === "visits") return (memory.getPetStats().streak || 0);
+    return 0;
+  }
+
+  function isUnlocked(item){
+    const u = item.unlock || { type: "default" };
+    if(u.type === "default") return true;
+    if(state.unlocked.includes(item.id)) return true;
+    if(u.type === "achievement") return metric(u.metric) >= u.gte;
+    return false;
+  }
+  function isAvailable(item, d){
+    const a = item.availability; if(!a) return true;
+    d = d || new Date();
+    if(a.months) return a.months.includes(d.getMonth() + 1);
+    if(a.from && a.to){
+      const md = ui.pad(d.getMonth() + 1) + "-" + ui.pad(d.getDate());
+      return a.from <= a.to ? (md >= a.from && md <= a.to) : (md >= a.from || md <= a.to);
+    }
+    return true;
+  }
+  // an item the user explicitly unlocked is always wearable, even out of season
+  function canEquip(item){ return isUnlocked(item) && (isAvailable(item) || state.unlocked.includes(item.id)); }
+
+  /* ---------------- bow tie colour + per-presentation placement ---------------- */
+  const hexRe = c => new RegExp(c.replace("#", "#"), "gi");
+  function tinted(neck, tieId){
+    const pal = TIE_PALETTES.find(t => t.id === tieId);
+    if(!neck || !pal || !pal.c) return neck || "";
+    const m = /id="g-([a-z0-9-]+)"/.exec(neck); if(!m || !BOWS[m[1]]) return neck;
+    const from = BOWS[m[1]], to = pal.c;
+    // replace the three bow colours (stops + knot) — scarves, collars, garlands use other colours
+    let out = neck;
+    from.forEach((c, i) => { out = out.replace(hexRe(c), "§" + i + "§"); });
+    to.forEach((c, i) => { out = out.split("§" + i + "§").join(c); });
+    return out;
+  }
+  function placeStyle(slot, item, form){
+    const base = (PLACEMENT[form] && PLACEMENT[form][slot]) || {};
+    const own = (item && item.place && item.place[form]) || {};
+    const p = Object.assign({}, base, own);
+    const o = p.o || [150, 172];
+    const parts = [];
+    if(p.x || p.y) parts.push(`translate(${p.x || 0}px,${p.y || 0}px)`);
+    if(p.r) parts.push(`rotate(${p.r}deg)`);
+    if(p.s && p.s !== 1) parts.push(`scale(${p.s})`);
+    return `transform:${parts.join(" ") || "none"};transform-origin:${o[0]}px ${o[1]}px`;
+  }
+  // one slot → its SVG markup, wrapped in a positioned group
+  function slotMarkup(slot, outfit, accMap, form, tieId){
+    const acc = accMap && accMap[slot] ? accById(accMap[slot]) : null;
+    const raw = acc ? acc.part : ((outfit.parts && outfit.parts[slot]) || "");
+    const inner = slot === "neck" && !acc ? tinted(raw, tieId) : raw;
+    return `<g class="wear-item" style="${placeStyle(slot, acc, form)}">${inner}</g>`;
+  }
+
+  /* ---------------- rendering onto the creature ---------------- */
+  function apply(){
+    const outfit = byId(state.outfit) || byId("classic");
+    SLOTS.forEach(slot => {
+      const g = document.getElementById("slot-" + slot); if(!g) return;
+      g.innerHTML = slotMarkup(slot, outfit, state.acc, state.form, state.tie);
+    });
+    const t = outfit.tint || {};
+    const fur = t.fur || DEFAULT_FUR;
+    face.style.setProperty("--fur-hi", fur[0]);
+    face.style.setProperty("--fur-mid", fur[1]);
+    face.style.setProperty("--fur-lo", fur[2]);
+    if(t.eye){ face.style.setProperty("--eye-rgb", t.eye); face.style.setProperty("--glow-rgb", t.glow || t.eye); }
+    else { face.style.removeProperty("--eye-rgb"); face.style.removeProperty("--glow-rgb"); }
+    face.dataset.outfit = outfit.id;
+    face.dataset.form = state.form;
+    document.body.dataset.form = state.form;
+    bus.emit("outfit:changed", { outfit: outfit.id, acc: { ...state.acc }, form: state.form, tie: state.tie });
+  }
+
+  /* ---------------- presentation: Classic (minimal) <-> MAGIC WORLD ----------------
+     Only the look changes. Memory, settings, chats, accessories and every
+     running animation are untouched. world-engine.js builds / removes the
+     scene and the supplied character layers when body[data-form] changes. */
+  function paintForm(){ face.dataset.form = state.form; document.body.dataset.form = state.form; }
+  function setForm(form, opt){
+    form = form === "magic" ? "magic" : "minimal";
+    if(form === state.form) return false;
+    state.form = form; if(!(opt && opt.auto)) state.formChosen = true; save(); paintForm();
+    // re-place (not re-draw) every worn piece so it sits correctly for the new presentation
+    SLOTS.forEach(slot => {
+      const w = document.getElementById("slot-" + slot)?.firstElementChild; if(!w) return;
+      const acc = state.acc[slot] ? accById(state.acc[slot]) : null;
+      w.setAttribute("style", placeStyle(slot, acc, state.form));
+    });
+    bus.emit("outfit:form", { form });
+    bus.emit("outfit:changed", { outfit: state.outfit, acc: { ...state.acc }, form, tie: state.tie });
+    return true;
+  }
+  function setTie(id){
+    if(!TIE_PALETTES.some(t => t.id === id)) return false;
+    state.tie = id; save(); apply();
+    bus.emit("outfit:equipped", { id: "tie:" + id });
+    return true;
+  }
+
+  function equipOutfit(id){
+    const o = byId(id); if(!o || !canEquip(o)) return false;
+    state.outfit = id; save(); apply();
+    bus.emit("outfit:equipped", { id });
+    return true;
+  }
+  function equipAccessory(slot, id){
+    if(id){
+      const a = accById(id); if(!a || !canEquip(a)) return false;
+      state.acc[a.slot] = id;
+    } else state.acc[slot] = null;
+    save(); apply();
+    bus.emit("outfit:equipped", { id: id || null });
+    return true;
+  }
+
+  /* ---------------- unlocking ---------------- */
+  function unlock(id, quiet){
+    const item = byId(id) || accById(id); if(!item) return false;
+    if(state.unlocked.includes(id)) return false;
+    state.unlocked.push(id);
+    save();
+    if(!quiet){
+      ui.toast({ sticker: "star", title: "New in the wardrobe", text: item.name + " is yours. Find it in Settings → Wardrobe.", timeout: 8000 });
+      window.DABSy.director.dispatch("SUCCESS_MOMENT", { speakText: null });
+    }
+    bus.emit("outfit:unlocked", { id });
+    return true;
+  }
+  // announce achievement-based unlocks exactly once
+  let firstCheck = !memory.read("wardrobe_announced_v1", null);
+  function checkAchievements(){
+    const seen = memory.read("wardrobe_announced_v1", []);
+    let changed = false;
+    OUTFITS.concat(ACCESSORIES).forEach(item => {
+      const u = item.unlock || {};
+      if(u.type === "achievement" && metric(u.metric) >= u.gte && !seen.includes(item.id)){
+        seen.push(item.id); changed = true;
+        // the very first check on a fresh install should not shower the user with toasts
+        if(!firstCheck) ui.toast({ title: "New in the wardrobe", text: item.name + " is yours. Find it in Settings → Wardrobe.", timeout: 8000 });
+      }
+    });
+    firstCheck = false;
+    if(changed || !memory.read("wardrobe_announced_v1", null)) memory.write("wardrobe_announced_v1", seen);
+  }
+
+  /* ---------------- lists + previews for the Wardrobe UI ---------------- */
+  function describe(item){
+    const unlocked = isUnlocked(item), available = isAvailable(item);
+    const u = item.unlock || {};
+    let note = "";
+    if(!unlocked) note = u.type === "achievement" ? u.hint : "A hidden surprise";
+    else if(!available && !state.unlocked.includes(item.id)) note = "Out of season";
+    return { ...item, unlocked, available, equippable: canEquip(item), note };
+  }
+  const list = () => OUTFITS.map(describe);
+  const listAccessories = () => ACCESSORIES.map(describe);
+
+  let pv = 0;
+  // form: "minimal" | "furry" (defaults to what DABSy wears now). Minimal previews draw only eyes + bow tie + gear.
+  function render(outfit, accMap, form, tieId){
+    const n = ++pv;
+    form = "minimal";                                      // wardrobe previews always draw the clean eyes + gear
+    const fur = (outfit.tint && outfit.tint.fur) || DEFAULT_FUR;
+    let parts = "";
+    SLOTS.forEach(slot => { parts += slotMarkup(slot, outfit, accMap, form, tieId == null ? state.tie : tieId); });
+    const body = "";
+    const eyeFill = "var(--pv-eye,#d9ecff)";
+    const svg = `<svg viewBox="0 0 300 330" class="pv-${form}" aria-hidden="true">
+      <defs><radialGradient id="pb" cx=".35" cy=".25" r="1"><stop offset="0" stop-color="${fur[0]}"/><stop offset=".5" stop-color="${fur[1]}"/><stop offset="1" stop-color="${fur[2]}"/></radialGradient></defs>
+      ${body}
+      <rect x="82" y="137" width="46" height="71" rx="22" style="fill:${eyeFill}" class="pv-eye"/><rect x="172" y="137" width="46" height="71" rx="22" style="fill:${eyeFill}" class="pv-eye"/>
+      ${parts}</svg>`;
+    // keep every gradient id unique per preview, so many previews can share one page
+    return svg.replace(/(id="|url\(#)(g-[a-z0-9-]+|pb)/g, `$1pv${n}-$2`);
+  }
+  function preview(id, isAccessory){
+    if(isAccessory){ const a = accById(id); return render(byId("classic"), { [a.slot]: a.id }, null, "outfit"); }
+    return render(byId(id) || byId("classic"), null, null, "outfit");
+  }
+  function previewCurrent(){ return render(byId(state.outfit) || byId("classic"), state.acc); }
+  // a tile for the Minimal/Furry chooser (never shows accessories, so the two looks compare cleanly)
+  function previewForm(){ return render(byId(state.outfit) || byId("classic"), null, "minimal"); }
+  function previewTie(tieId){ return render(byId(state.outfit) || byId("classic"), null, "minimal", tieId); }
+
+  window.DABSy.outfits = {
+    equipOutfit, equipAccessory, unlock, isUnlocked, list, listAccessories, preview, previewCurrent, previewForm, previewTie, metric,
+    setForm, form: () => state.form, setTie, tie: () => state.tie, tiePalettes: () => TIE_PALETTES,
+    checkAchievements, current: () => ({ outfit: state.outfit, acc: { ...state.acc }, form: state.form, tie: state.tie }), apply,
+  };
+
+  // an outfit that is out of season quietly falls back to classic
+  const cur = byId(state.outfit);
+  if(!cur || !canEquip(cur)) state.outfit = "classic";
+  paintForm();
+  apply();
+  checkAchievements();
+  bus.on("tasks:completed", () => checkAchievements());
+  bus.on("session:finished", () => checkAchievements());
+  bus.on("memory:wiped", () => { state = { outfit: "classic", acc: { eyes: null, ears: null, head: null }, unlocked: [], form: "minimal", formChosen: false, tie: "outfit" }; paintForm(); apply(); bus.emit("outfit:form", { form: "minimal" }); });
+})();
