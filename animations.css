@@ -1,0 +1,26 @@
+/* D.A.B.S.y — animations.css : boot, idle, speaking */
+#boot-veil{position:fixed;inset:0;background:var(--bg);z-index:999;pointer-events:none;animation:boot-fade 1.4s var(--ease-soft) forwards}
+@keyframes boot-fade{0%,45%{opacity:1}100%{opacity:0;visibility:hidden}}
+.booting #creature-wrap{opacity:0;filter:blur(14px)}
+#creature-wrap{transition:transform .7s var(--ease-out),opacity 1s var(--ease-soft),filter 1s var(--ease-soft)}
+@keyframes breathe{0%,100%{transform:scale(1,1)}50%{transform:scale(1.012,1.022)}}
+#face.idle-breathe .cr-sway{animation:breathe 4.6s ease-in-out infinite}
+@keyframes glow-pulse{0%,100%{opacity:.6}50%{opacity:.85}}
+.eye-glow.ambient{animation:glow-pulse 3.6s ease-in-out infinite}
+@keyframes talk-beat{0%,100%{transform:scaleY(1)}50%{transform:scaleY(1.06)}}
+.eye.talking .eye-shape{animation:talk-beat 280ms ease-in-out infinite}
+@keyframes ripple{0%{box-shadow:0 0 0 0 rgba(255,255,255,.45)}100%{box-shadow:0 0 0 18px rgba(255,255,255,0)}}
+@keyframes recoil{0%{transform:scale(1)}30%{transform:scale(1.14)}60%{transform:scale(.97)}100%{transform:scale(1)}}
+.eye.recoil{animation:recoil 420ms var(--ease-spring)}
+@keyframes micro-look{0%{transform:translate(0,0)}100%{transform:translate(var(--lx,0),var(--ly,0))}}
+.eye.micro-look{animation:micro-look 900ms var(--ease-soft) forwards}
+@keyframes proj-in{0%{opacity:0;transform:scale(.96);filter:blur(8px)}100%{opacity:1;transform:none;filter:none}}
+#projection.open #projection-surface{animation:proj-in var(--dur-med) var(--ease-out) forwards}
+
+/* soda fizz celebration (easter-engine.js): decorative, never intercepts touches */
+#fizz{position:fixed;inset:0;pointer-events:none;z-index:8;overflow:hidden}
+#fizz i{position:absolute;bottom:-30px;border-radius:50%;border:1.5px solid var(--soda,#8fd8f5);
+  background:radial-gradient(circle at 30% 28%,rgba(255,255,255,.9),rgba(143,216,245,.25) 60%);opacity:0;
+  animation:fizz-rise 2s ease-in forwards}
+@keyframes fizz-rise{0%{transform:translateY(0) scale(.6);opacity:0}15%{opacity:.9}100%{transform:translateY(-78vh) translateX(14px) scale(1.1);opacity:0}}
+body.reduce-motion #fizz{display:none}
