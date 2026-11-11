@@ -19,7 +19,7 @@
   window.DABSy = window.DABSy || {};
 
   const CONFIG = {
-    version: "10.4.0",
+    version: "11.2.0",
 
     push: {
       // Web Push for reminders when the app is closed. Deploy backend/ (see BACKEND.md, "Web Push"), then put its
@@ -36,9 +36,6 @@
       // "proxy"   = the original backend/worker.js: POST /v1/generate
       mode: "message",
       requestTimeoutMs: 25000,
-      // Stream answers word by word when the Worker supports it (dabsy-brain.js v10.3). An older Worker answers with plain JSON and
-      // the app detects that automatically, so leaving this on is safe.
-      streaming: true,
     },
 
     // Real resource discovery. Deploy backend/worker.js (free Cloudflare plan, no API key needed for
@@ -99,6 +96,8 @@
     games:       { js: ["entertainment-engine.js"] },
     floating:    { js: ["floating-engine.js"] },
     vision:      { js: ["vision-engine.js"] },
+    // v11.3 step 1: action intelligence foundation (plans, capabilities, intent safety, orchestrator). Loading it executes nothing.
+    execution:   { js: ["action-contract.js", "capability-registry.js", "intent-safety.js", "execution-engine.js"] },
   };
 
   const cache = {};
