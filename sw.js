@@ -8,7 +8,7 @@
    picked up on the next load while the app still opens offline.
    AI proxy calls and other origins are never cached.
    ============================================================ */
-const CACHE_VERSION = "dabsy-v11.2.1";
+const CACHE_VERSION = "dabsy-v11.2.2";
 const SCOPE = self.registration.scope;
 
 const SHELL_FILES = ["./",

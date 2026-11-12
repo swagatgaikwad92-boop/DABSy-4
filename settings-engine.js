@@ -28,8 +28,9 @@
     return el("section", { id: "set-" + id, class: "set-sec" }, el("div", { class: "section-title" }, title), ...kids);
   }
 
-  async function open(which){
-    const sh = ui.sheet({ title: "Settings", className: "settings", onClose: () => offs.forEach(f => f()) });
+  let liveSheet = null;
+  async function openImpl(which){
+    const sh = liveSheet = ui.sheet({ title: "Settings", className: "settings", onClose: () => offs.forEach(f => f()) });
     const offs = [];
     const body = sh.body;
 
@@ -174,11 +175,11 @@
     limit.value = String(ns.dailyLimit); limit.onchange = () => D.notify.saveSettings({ dailyLimit: Number(limit.value) });
     const notifSection = section("notifications", "Notifications",
       switchRow("Nudges from DABSy", "Gentle follow-ups about tasks. They adapt if you ignore them.", ns.enabled, v => D.notify.saveSettings({ enabled: v })),
-      switchRow("Alerts when DABSy is in the background", "Uses your phone's own notifications. Works while the app is open or recently used. A web app can't wake itself when fully closed.", ns.system && Notification.permission === "granted", async (v, input) => {
+      switchRow("Alerts when DABSy is in the background", "Uses your phone's own notifications. Works while the app is open or recently used. A web app can't wake itself when fully closed.", ns.system && typeof Notification !== "undefined" && Notification.permission === "granted", async (v, input) => {
         if(v){ const ok = await D.notify.enableSystem(); input.checked = ok; D.permissions.describe("notifications").then(d => { permChip.textContent = d.text; permChip.className = "chip " + (d.state === "granted" ? "ok" : d.state === "denied" ? "bad" : ""); }); }
         else D.notify.saveSettings({ system: false });
       }, permChip),
-      D.push && D.push.supported() ? switchRow("Reminders when DABSy is closed", "Sends your upcoming reminder times to your DABSy server so your phone can alert you even when the app is shut. Turn off to stop sharing them.", D.push.enabled() && Notification.permission === "granted", async (v, input) => {
+      D.push && D.push.supported() ? switchRow("Reminders when DABSy is closed", "Sends your upcoming reminder times to your DABSy server so your phone can alert you even when the app is shut. Turn off to stop sharing them.", D.push.enabled() && typeof Notification !== "undefined" && Notification.permission === "granted", async (v, input) => {
         if(v){ const r = await D.push.enable(); input.checked = !!r.ok; if(!r.ok) D.notify.ping({ title: "Couldn't turn that on", body: "Reason: " + r.error + ". Check the push setup in BACKEND.md.", actions: [] }); }
         else D.push.disable();
       }) : null,
@@ -274,6 +275,15 @@
       priv, floatSec, help, about);
     if(which) setTimeout(() => { const t = body.querySelector("#set-" + which); t && t.scrollIntoView({ block: "start", behavior: "smooth" }); }, 360);
     return sh;
+  }
+
+  async function open(which){
+    try{ return await openImpl(which); }
+    catch(err){
+      console.error("Settings failed to open", err);
+      try{ liveSheet && liveSheet.close(); }catch(e){}
+      ui.toast({ title: "Couldn't open Settings", text: String((err && err.message) || err) });
+    }
   }
 
   /* hidden developer shortcut: tap the version 7 times to point DABSy at your own AI service URL.
