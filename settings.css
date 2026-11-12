@@ -1,5 +1,5 @@
 /* D.A.B.S.y — settings.css */
-.sheet.settings{max-height:88vh}
+.sheet.settings{max-height:calc(var(--vvh, 100vh) * .88)}
 .set-sec{display:flex;flex-direction:column;gap:8px;margin-top:6px}
 .wd-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .wd-tile{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px 10px;border-radius:18px;background:var(--glass);border:1px solid var(--glass-border);text-align:center;position:relative}
