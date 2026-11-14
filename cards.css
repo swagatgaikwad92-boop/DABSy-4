@@ -47,3 +47,21 @@ body.reduce-motion .rcard{ transition: none; }
 .rc-list .rc-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .rc-list .rc-acts .btn{min-height:44px}
 .rc-list .rc-source{font-size:12px;opacity:.7}
+
+/* v12 — preference box at the very bottom of the recommendation card */
+.rc-pref{margin:18px 0 4px;padding:14px;border-radius:20px;background:var(--glass);border:1px solid var(--glass-border)}
+.rc-pref-t{font-weight:650;font-size:.92rem;color:var(--ink);margin-bottom:4px}
+.rc-pref-on{font-size:.76rem;color:var(--ink-dim);margin-bottom:8px}
+.rc-pchips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.rc-pchip{min-height:34px;padding:0 12px;border-radius:999px;font-size:.78rem;border:1px solid var(--glass-border);background:var(--glass-strong);color:var(--ink)}
+.rc-pchip:active{transform:scale(.96)}.rc-pchip:disabled{opacity:.5}
+.rc-pref-row{display:flex;gap:8px;align-items:flex-end}
+.rc-pref textarea{flex:1;min-width:0;resize:none;min-height:46px;max-height:120px;padding:10px 12px;border-radius:16px;border:1px solid var(--glass-border);background:var(--glass-strong);color:var(--ink);font-size:16px;line-height:1.4;user-select:text;-webkit-user-select:text}
+.rc-pref textarea::placeholder{color:var(--ink-faint)}
+.rc-loading{display:flex;flex-direction:column;gap:10px;padding:10px 0;color:var(--ink-dim);font-size:.88rem}
+.rc-loading>span{display:block}
+.rc-spin{width:22px;height:22px;border-radius:50%;border:3px solid var(--glass-border);border-top-color:var(--accent);animation:rc-spin .9s linear infinite}
+.rc-skel{height:74px;border-radius:18px;background:linear-gradient(100deg,var(--glass) 30%,var(--glass-strong) 50%,var(--glass) 70%);background-size:200% 100%;animation:rc-shim 1.3s ease-in-out infinite}
+.rc-empty{margin:8px 0;padding:14px;border-radius:18px;border:1px dashed var(--glass-border);color:var(--ink);font-size:.9rem}.rc-empty p{margin:6px 0 10px;color:var(--ink-dim)}
+@keyframes rc-spin{to{transform:rotate(360deg)}}@keyframes rc-shim{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.rc-spin,.rc-skel{animation:none}}

@@ -19,7 +19,7 @@
   window.DABSy = window.DABSy || {};
 
   const CONFIG = {
-    version: "11.2.0",
+    version: "12.0.0",
 
     push: {
       // Web Push for reminders when the app is closed. Deploy backend/ (see BACKEND.md, "Web Push"), then put its
@@ -122,7 +122,9 @@
       l.dataset.lazy = href;
       l.onload = resolve;
       l.onerror = resolve; // a missing stylesheet must never block the feature
-      document.head.appendChild(l);
+      // v12: lazy feature styles go BEFORE the theme/glass layers, so those layers always have the last word
+      const anchor = document.querySelector('link[href="./day.css"]');
+      if (anchor) document.head.insertBefore(l, anchor); else document.head.appendChild(l);
     });
   }
 

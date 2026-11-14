@@ -47,6 +47,87 @@
     finally{ clearTimeout(t); }
   }
 
+
+  /* ---------- v12: the student's own words about what they prefer ----------
+     "I want visual explanations, animated videos and beginner-friendly explanations. Avoid lengthy PDFs."
+     parsePrefs() reads that locally (no network, always works); applyPrefs() re-ranks / filters real candidates with it.
+     Nothing is ever added that a provider did not return. */
+  const TYPE_WORDS = { video: /\b(videos?|youtube|lectures?|animations?|animated|clips?)\b/i, pdf: /\b(pdfs?|notes|textbooks?|books?|handouts?|worksheets?|documents?)\b/i, article: /\b(articles?|wikipedia|blogs?|web ?pages?|text|reading)\b/i };
+  function parsePrefs(text){
+    const raw = String(text || "").trim(); if(!raw) return null;
+    const P = { raw, want: {}, avoid: {}, flags: [], maxMin: null };
+    raw.split(/(?<=[.;!?])\s+|[\n,;]+|\bbut\b|\bhowever\b/i).forEach(seg => {
+      if(!seg.trim()) return;
+      const neg = /\b(avoid|no|not|without|skip|don'?t want|do not want|not interested in|except|rather than|instead of)\b/i.test(seg);
+      const into = neg ? P.avoid : P.want;
+      Object.keys(TYPE_WORDS).forEach(t => { if(TYPE_WORDS[t].test(seg)) into[t] = true; });
+      if(neg){ if(/\b(long|lengthy|big|heavy|huge|large|thick|detailed|dense|boring)\b/i.test(seg)) P.avoid.long = true; if(/\b(advanced|hard|difficult|complex|technical|jargon)\b/i.test(seg)) P.avoid.advanced = true; return; }
+      if(/\b(visual|diagrams?|animat\w*|illustrat\w*|pictures?|graphics?|simulat\w*|interactive|see it|show me)\b/i.test(seg)) P.flags.push("visual");
+      if(/\b(beginner|basics?|basic|simple|simply|easy|easier|intro\w*|from scratch|first time|newbie|layman|eli5|friendly)\b/i.test(seg)) P.flags.push("beginner");
+      if(/\b(advanced|jee|in[- ]depth|deep dive|rigorous|challenging|olympiad)\b/i.test(seg)) P.flags.push("advanced");
+      if(/\b(short|quick|brief|concise|crisp|few minutes|bite[- ]sized)\b/i.test(seg)) P.flags.push("short");
+      if(/\b(practice|problems?|questions?|numericals?|mcq|quiz|exercises?|worked examples?)\b/i.test(seg)) P.flags.push("practice");
+      const m = seg.match(/\b(?:under|within|less than|below|max(?:imum)?|up to)\s*(\d{1,3})\s*(?:min|minutes|mins)\b/i); if(m) P.maxMin = +m[1];
+    });
+    if(P.avoid.long) P.flags.push("short");
+    P.flags = Array.from(new Set(P.flags));
+    return P;
+  }
+  const prefSummary = P => P ? [].concat(
+    Object.keys(P.want).map(t => t === "video" ? "videos" : t === "pdf" ? "PDF notes" : "articles"),
+    P.flags.map(f => ({ visual: "visual", beginner: "beginner-friendly", advanced: "in-depth", short: "short", practice: "practice" }[f])),
+    P.maxMin ? ["under " + P.maxMin + " min"] : [],
+    Object.keys(P.avoid).map(t => "no " + ({ video: "videos", pdf: "PDFs", article: "articles", long: "long material", advanced: "heavy jargon" }[t]))).filter(Boolean).join(", ") : "";
+  function applyPrefs(list, P){
+    if(!P) return list;
+    const txt = r => ((r.title || "") + " " + (r.description || "")).toLowerCase();
+    const out = [];
+    list.forEach(r => {
+      const t = txt(r), why = [];
+      if(P.avoid[r.type]) return;                                                    // explicitly not wanted
+      if(P.avoid.long){
+        if(r.type === "pdf" && ((r.pages && r.pages > 15) || (r.sizeBytes && r.sizeBytes > 1.5e6))) return;
+        if(r.type === "video" && r.durationMin && r.durationMin > 25) return;
+      }
+      if(P.maxMin && r.type === "video" && r.durationMin && r.durationMin > P.maxMin) return;
+      let d = 0;
+      if(P.want[r.type]){ d += 0.22; why.push("a " + (r.type === "pdf" ? "PDF" : r.type) + ", as you asked"); }
+      if(P.flags.includes("visual")){
+        if(/\b(animat\w*|visual\w*|diagram|simulat\w*|illustrat\w*|interactive|explained|intuition|3d)\b/.test(t)){ d += 0.2; why.push("visual or animated"); }
+        else if(r.type === "video"){ d += 0.08; }
+      }
+      if(P.flags.includes("beginner")){
+        if(/\b(beginner\w*|basics?|introduction|intro|simple|simply|easy|easily|from scratch|for kids|made easy|explained)\b/.test(t)){ d += 0.2; why.push("beginner-friendly"); }
+        if(/\b(advanced|jee|olympiad|graduate|derivation|rigorous|proof)\b/.test(t)) d -= 0.15;
+      }
+      if(P.flags.includes("advanced")){
+        if(/\b(advanced|jee|olympiad|in[- ]depth|derivation|rigorous|problems)\b/.test(t)){ d += 0.2; why.push("in-depth"); }
+        if(/\b(for kids|beginner\w*|basic)\b/.test(t)) d -= 0.1;
+      }
+      if(P.flags.includes("short")){
+        if(r.type === "video" && r.durationMin){ if(r.durationMin <= 12){ d += 0.18; why.push("short"); } else if(r.durationMin > 20) d -= 0.18; }
+        if(r.type === "pdf") d -= 0.12;
+      }
+      if(P.flags.includes("practice") && /\b(practice|problems?|questions?|exercise\w*|numericals?|mcq|quiz|worksheet)\b/.test(t)){ d += 0.2; why.push("practice material"); }
+      if(P.avoid.advanced && /\b(advanced|jee|olympiad|graduate|rigorous)\b/.test(t)) d -= 0.2;
+      const c = Object.assign({}, r, { relevance: Math.max(0, Math.min(1, r.relevance + d)), _rank: (r._rank != null ? r._rank : r.relevance) + d });
+      if(why.length) c.prefWhy = why;
+      out.push(c);
+    });
+    return out.sort((a, b) => (b._rank != null ? b._rank : b.relevance) - (a._rank != null ? a._rank : a.relevance));
+  }
+  // extra search words so the providers themselves are asked for the right KIND of thing
+  function prefQuery(P){
+    if(!P) return "";
+    const w = [];
+    if(P.flags.includes("visual")) w.push("animation visual explanation");
+    if(P.flags.includes("beginner")) w.push("basics for beginners");
+    if(P.flags.includes("advanced")) w.push("advanced");
+    if(P.flags.includes("practice")) w.push("practice problems");
+    if(P.want.pdf && !P.want.video) w.push("pdf notes");
+    return w.join(" ");
+  }
+
   /* ---------- goal -> query ---------- */
   function topicWords(goal){ return [goal.topic, goal.subject].filter(Boolean).join(" ").trim() || goal.raw || ""; }
   function queryFor(goal){
@@ -141,11 +222,12 @@
   }
 
   /* ---------- optional AI judgement (index-only) ---------- */
-  async function aiJudge(goal, list){
+  async function aiJudge(goal, list, P){
     if(!ai || ai.status() === "limited" || !list.length) return null;
     const lines = list.map((r, i) => `${i}. [${r.type}] ${r.title} | ${r.source} | ${r.durationMin ? r.durationMin + " min" : "length unknown"} | ${r.description.slice(0, 110)}`).join("\n");
     const o = await ai.askJSON({ task: "rank", prompt: [
       `A student wants: "${goal.raw || topicWords(goal)}"${goal.level ? " (" + goal.level + ")" : ""}, with ${goal.minutes || 30} minutes available.`,
+      P ? "The student also said what they prefer: \"" + P.raw.slice(0, 300) + "\". Prefer matching items, and mark items that clearly go against it relevant:false." : "",
       "Judge ONLY the candidates below. Never add or invent items or links.", lines,
       'Reply ONLY with JSON: {"items":[{"i":<index>,"relevant":true|false,"why":"<=90 chars, why it helps THIS topic","role":"explain|practice|reference"}]}. Mark spam, off-topic, wrong level or misleading items relevant:false.',
     ].join("\n") });
@@ -161,38 +243,44 @@
   }
 
   /* ---------- main ---------- */
-  async function find(goal){
-    const q = queryFor(goal), total = goal.minutes || 30, budget = Math.max(8, total - 5);
-    const lib = library(goal);
+  async function find(goal, opts){
+    opts = opts || {};
+    const P = parsePrefs(opts.prefs), pq = prefQuery(P);
+    const q = (queryFor(goal) + (pq ? " " + pq : "")).trim(), total = goal.minutes || 30, budget = Math.max(8, total - 5);
+    const lib = P ? applyPrefs(library(goal), P) : library(goal);
     const providers = [["worker", pWorker], ["piped", pPiped], ["wiki", pWiki]];
-    if(wantsPdf(goal) || total >= 30) providers.push(["archive", pArchive]);
+    if(!(P && P.avoid.pdf) && (wantsPdf(goal) || total >= 30 || (P && P.want.pdf))) providers.push(["archive", pArchive]);
     const results = await Promise.allSettled(providers.map(([n, fn]) => withTimeout(fn(goal, q), (cfg().timeoutMs || 12000) + 3000)));
     const status = {}; let raw = [];
     results.forEach((r, i) => { const n = providers[i][0]; if(r.status === "fulfilled"){ status[n] = "ok:" + r.value.length; raw = raw.concat(r.value); } else status[n] = String(r.reason && r.reason.message || r.reason); });
     // the worker already covers videos; only fall back to Piped results if the worker gave none
     let list = dedupe(raw.map(c => inspect(c, goal, budget)).filter(Boolean));
     let ranked = "local";
-    const judged = await withTimeout(aiJudge(goal, list.slice(0, 14)), 9000).catch(() => null);   // AI is optional: never let it hold the results hostage
+    if(P) list = applyPrefs(list, P);
+    const judged = await withTimeout(aiJudge(goal, list.slice(0, 14), P), 9000).catch(() => null);   // AI is optional: never let it hold the results hostage
     if(judged && judged.length){
       const keep = [];
       judged.forEach(j => { const r = list[j.i]; if(!r) return; if(j.relevant === false) return; r.aiWhy = String(j.why || "").slice(0, 120); r.role = j.role; r.relevance = Math.min(1, r.relevance + 0.08); keep.push(r); });
       if(keep.length){ list = keep; ranked = "ai"; }
     }
-    list.sort((a, b) => b.relevance - a.relevance);
+    list.sort((a, b) => (b._rank != null ? b._rank : b.relevance) - (a._rank != null ? a._rank : a.relevance));
     list = list.slice(0, 8);
-    list.forEach(r => { r.why = whyLine(r, goal, r.aiWhy, r.role); r.sendable = r.type === "video" || r.type === "pdf"; });
+    list.forEach(r => { r.why = whyLine(r, goal, r.aiWhy, r.role) + (r.prefWhy ? " Matches your preference: " + r.prefWhy.join(", ") + "." : ""); r.sendable = r.type === "video" || r.type === "pdf"; });
     const tried = Object.keys(status);
     const failed = tried.filter(n => !status[n].startsWith("ok"));
     if(!list.length){
       const allDown = tried.every(n => !status[n].startsWith("ok"));
-      return { resources: lib, mode: "none", providers: status, ranked,
-        note: allDown ? "I couldn't reach any search service just now, so I have nothing real to recommend." : `I searched but found nothing I'd trust for "${topicWords(goal) || q}" in ${total} minutes.` };
+      const sm = prefSummary(P);
+      return { resources: lib, mode: "none", providers: status, ranked, prefs: sm,
+        note: allDown ? "I couldn't reach any search service just now, so I have nothing real to recommend."
+          : P ? `I searched again, but nothing I'd trust matched "${sm || P.raw.slice(0, 60)}" for ${topicWords(goal) || "this topic"}. Try loosening one thing, for example allowing PDFs or longer videos.`
+          : `I searched but found nothing I'd trust for "${topicWords(goal) || q}" in ${total} minutes.` };
     }
     const hasVideo = list.some(r => r.type === "video");
     const note = [ranked === "local" && ai && ai.status() !== "limited" ? "I ranked these myself because the AI didn't answer." : "",
       !hasVideo ? "I couldn't find a video that fits." : "", failed.length ? "Some sources were unavailable (" + failed.join(", ") + ")." : "",
       list.some(r => r.type === "video" && !r.verified) ? "Embedding wasn't pre-checked for videos; Study Space will tell you if one can't play." : ""].filter(Boolean).join(" ");
-    return { resources: list.concat(lib.filter(l => !list.some(r => r.url === l.url))), mode: failed.length || !hasVideo ? "partial" : "web", providers: status, ranked, note };
+    return { resources: list.concat(lib.filter(l => !list.some(r => r.url === l.url))), mode: failed.length || !hasVideo ? "partial" : "web", providers: status, ranked, note, prefs: prefSummary(P) };
   }
 
   function library(goal){
@@ -215,5 +303,5 @@
     return [{ label: "Search YouTube yourself", url: "https://www.youtube.com/results?search_query=" + q }, { label: "Search the web yourself", url: "https://www.google.com/search?q=" + q + "+notes" }];
   }
 
-  window.DABSy.research = { find, remember, queryFor, searchLinks, inspect, ytId, tokens };
+  window.DABSy.research = { find, remember, queryFor, searchLinks, inspect, ytId, tokens, parsePrefs, applyPrefs, prefSummary };
 })();

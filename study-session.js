@@ -153,25 +153,60 @@
   const avgBlock = s => { const w = s.plan.blocks.filter(b => b.kind === "learn" || b.kind === "practice"); return w.length ? Math.round(w.reduce((a, b) => a + b.minutes, 0) / w.length) : null; };
 
   /* ---------------- dock UI (small, bottom, glass) ---------------- */
+  /* the pill can be moved: drag it, it snaps to the left, centre or right and remembers where you put it. A tap opens/closes it. */
+  const POSKEY = "session_dock_pos_v1";
+  function applyDockPos(d){
+    const pos = ui.memory ? null : null; let p = null; try{ p = window.DABSy.memory.read(POSKEY, null); }catch(e){}
+    d.style.setProperty("--sd-x", p && ["l", "c", "r"].includes(p.x) ? p.x : "c"); d.dataset.x = p && ["l", "c", "r"].includes(p.x) ? p.x : "c";
+    d.style.setProperty("--sd-b", (p && isFinite(p.b) ? Math.max(8, Math.min(window.innerHeight - 120, p.b)) : 14) + "px");
+  }
+  function wireDockDrag(d, handle, onTap){
+    applyDockPos(d);
+    let sx = 0, sy = 0, down = false, moved = false, pid = null, b0 = 14, bx = 0;
+    handle.addEventListener("pointerdown", e => { if(e.target.closest("button")) return; down = true; moved = false; pid = e.pointerId; sx = e.clientX; sy = e.clientY; b0 = parseFloat(d.style.getPropertyValue("--sd-b")) || 14; try{ handle.setPointerCapture(pid); }catch(_){} });
+    handle.addEventListener("pointermove", e => {
+      if(!down || e.pointerId !== pid) return; const dx = e.clientX - sx, dy = e.clientY - sy;
+      if(!moved){ if(Math.hypot(dx, dy) < 8) return; moved = true; d.classList.add("moving"); }
+      d.style.setProperty("--sd-b", Math.max(8, Math.min(window.innerHeight - 120, b0 - dy)) + "px"); d.style.setProperty("--sd-dx", dx + "px"); e.preventDefault();
+    }, { passive: false });
+    const end = e => {
+      if(!down) return; down = false; const wasMoved = moved; d.classList.remove("moving");
+      if(!wasMoved){ onTap(); return; }
+      const r = d.getBoundingClientRect(), c = (r.left + r.width / 2) / window.innerWidth, x = c < .34 ? "l" : c > .66 ? "r" : "c";
+      d.style.setProperty("--sd-dx", "0px"); d.dataset.x = x;
+      try{ window.DABSy.memory.write(POSKEY, { x, b: Math.round(parseFloat(d.style.getPropertyValue("--sd-b")) || 14) }); }catch(_){}
+    };
+    handle.addEventListener("pointerup", end); handle.addEventListener("pointercancel", () => { down = false; d.classList.remove("moving"); });
+    handle.addEventListener("keydown", e => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); onTap(); } });
+  }
   function mountDock(){
     if(dock) return;
-    dock = ui.el("section", { id: "session-dock", "aria-label": "Study session" },
+    /* v12: a compact floating glass pill (ring + time + pause/resume); tap it to open the full controls. The timing logic below is untouched. */
+    const pc = ui.el("button", { class: "sd-pc", id: "sd-pause-c", type: "button", "aria-label": "Pause" });
+    const chev = ui.el("button", { class: "sd-chev", type: "button", "aria-label": "Show controls", "aria-expanded": "false", html: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>' });
+    dock = ui.el("section", { id: "session-dock", "aria-label": "Study session", "data-open": "0", "data-run": "running" },
       ui.el("div", { class: "sd-top" },
-        ui.el("div", { class: "sd-ring" }, ui.el("span", { html: '<svg viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="19" class="bg"/><circle cx="22" cy="22" r="19" class="fg" id="sd-arc"/></svg>' }), ui.el("span", { id: "sd-time", role: "timer" }, "--:--")),
-        ui.el("div", { class: "sd-info" }, ui.el("div", { id: "sd-kind", class: "sd-kind" }), ui.el("div", { id: "sd-title", class: "sd-title" }), ui.el("div", { id: "sd-step", class: "sd-step" })),
-      ),
-      ui.el("div", { class: "sd-actions" },
-        ui.el("button", { class: "btn sm", id: "sd-pause", type: "button" }),
-        ui.el("button", { class: "btn sm", id: "sd-skip", type: "button" }, "Skip"),
-        ui.el("button", { class: "btn sm", id: "sd-ask", type: "button" }, "Ask"),
-        ui.el("button", { class: "btn sm", id: "sd-more", type: "button" }, "Plan"),
-        ui.el("button", { class: "btn sm danger", id: "sd-end", type: "button" }, "End")),
-      askRow = ui.el("form", { class: "sd-ask", hidden: true, onsubmit: e => { e.preventDefault(); const i = askRow.querySelector("input"); const v = i.value.trim(); if(v){ i.value = ""; window.DABSy.app.handleUserUtterance(v); } } },
-        ui.el("input", { type: "text", placeholder: "Ask a doubt…", "aria-label": "Ask a doubt", autocomplete: "off", enterkeyhint: "send" }),
-        ui.el("button", { class: "icon-btn sm", type: "button", "aria-label": "Speak", html: ui.icon("mic", 18), onclick: () => document.getElementById("mic-btn").click() }),
-        ui.el("button", { class: "btn sm primary", type: "submit" }, "Send")));
+        ui.el("div", { class: "sd-ring" }, ui.el("span", { html: '<svg viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="19" class="bg"/><circle cx="22" cy="22" r="19" class="fg" id="sd-arc"/></svg>' }), ui.el("i", { class: "sd-dot", "aria-hidden": "true" })),
+        ui.el("div", { class: "sd-clock" }, ui.el("span", { id: "sd-time", role: "timer", "aria-live": "off" }, "--:--"), ui.el("span", { id: "sd-kind", class: "sd-kind" })),
+        pc, chev),
+      ui.el("div", { class: "sd-body" },
+        ui.el("div", { class: "sd-info" }, ui.el("div", { id: "sd-title", class: "sd-title" }), ui.el("div", { id: "sd-step", class: "sd-step" })),
+        ui.el("div", { class: "sd-actions" },
+          ui.el("button", { class: "btn sm", id: "sd-pause", type: "button" }),
+          ui.el("button", { class: "btn sm", id: "sd-skip", type: "button" }, "Skip"),
+          ui.el("button", { class: "btn sm", id: "sd-ask", type: "button" }, "Ask"),
+          ui.el("button", { class: "btn sm", id: "sd-more", type: "button" }, "Plan"),
+          ui.el("button", { class: "btn sm danger", id: "sd-end", type: "button" }, "End")),
+        askRow = ui.el("form", { class: "sd-ask", hidden: true, onsubmit: e => { e.preventDefault(); const i = askRow.querySelector("input"); const v = i.value.trim(); if(v){ i.value = ""; window.DABSy.app.handleUserUtterance(v); } } },
+          ui.el("input", { type: "text", placeholder: "Ask a doubt…", "aria-label": "Ask a doubt", autocomplete: "off", enterkeyhint: "send" }),
+          ui.el("button", { class: "icon-btn sm", type: "button", "aria-label": "Speak", html: ui.icon("mic", 18), onclick: () => document.getElementById("mic-btn").click() }),
+          ui.el("button", { class: "btn sm primary", type: "submit" }, "Send"))));
     document.body.append(dock);
-    dock.querySelector("#sd-pause").onclick = () => { const s = active(); s && (s.run.paused ? resume() : pause()); };
+    const togglePause = () => { const s = active(); s && (s.run.paused ? resume() : pause()); };
+    dock.querySelector("#sd-pause").onclick = togglePause; pc.onclick = ev => { ev.stopPropagation(); togglePause(); };
+    const setOpen = v => { dock.dataset.open = v ? "1" : "0"; chev.setAttribute("aria-expanded", String(v)); chev.setAttribute("aria-label", v ? "Hide controls" : "Show controls"); };
+    chev.onclick = ev => { ev.stopPropagation(); setOpen(dock.dataset.open !== "1"); };
+    wireDockDrag(dock, dock.querySelector(".sd-top"), () => setOpen(dock.dataset.open !== "1"));
     dock.querySelector("#sd-skip").onclick = () => skipBlock();
     dock.querySelector("#sd-ask").onclick = () => { askRow.hidden = !askRow.hidden; if(!askRow.hidden) askRow.querySelector("input").focus(); };
     dock.querySelector("#sd-more").onclick = () => { const s = active(); s && overview(s); };
@@ -191,8 +226,9 @@
     const frac = 1 - rem / (b.minutes * 60000);
     dock.querySelector("#sd-arc").style.strokeDashoffset = String(119.4 * (1 - Math.max(0, Math.min(1, frac))));
     if(light) return;
-    dock.dataset.kind = b.kind;
-    dock.querySelector("#sd-kind").textContent = KIND[b.kind] + " · " + b.minutes + " min";
+    dock.dataset.kind = b.kind; dock.dataset.run = s.run.paused ? "paused" : "running";
+    dock.querySelector("#sd-kind").textContent = (s.run.paused ? "Paused · " : "") + KIND[b.kind] + " · " + b.minutes + " min";
+    { const pc = dock.querySelector("#sd-pause-c"); pc.innerHTML = ui.icon(s.run.paused ? "play" : "pause", 20); pc.setAttribute("aria-label", s.run.paused ? "Resume" : "Pause"); }
     dock.querySelector("#sd-title").textContent = b.title;
     const workIdx = s.plan.blocks.slice(0, s.run.idx + 1).length;
     dock.querySelector("#sd-step").textContent = `Step ${workIdx} of ${s.plan.blocks.length}` + (b.note ? " · " + b.note : "");

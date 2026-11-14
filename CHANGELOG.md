@@ -1,3 +1,16 @@
+# DABSy v12.0.0 — experience, interaction, study intelligence, visual design
+
+- Day "Morning Paper" / night "Midnight Study" palettes (day.css), Liquid Glass material + touch response (glass.css, glass-engine.js).
+- Widgets: free drag with momentum, resize, 7 colour presets + custom, saved per widget (widget-engine.js, widgets2.css).
+- Rest of Day: drag to reorder, press-and-hold a time for a clock, placed activities, conflict notices with one-tap fix (dayplan-engine.js, time-picker.js).
+- Live Talk: DABSy's character, distinct listening/thinking/speaking, honest mic indicator, expandable (live-talk.js, livetalk.css).
+- Study: KaTeX maths (vendor/katex), plain-text tutor prompt (no JSON escaping), Recheck, follow-ups, spoken formulas; Study Block no longer swallows non-study messages.
+- Study Space: preference box at the bottom of recommendations, honest loading/empty states (research-service.js, resource-cards.js).
+- Chat input grows to five lines (chatbox-engine.js). Study timer is a compact floating pill (timer.css).
+- Details, tests and limitations: V12_REPORT.md. Cache: dabsy-v12.0.0.
+
+---
+
 # DABSy v11.0.0 — conversation quality, butler, reply card, safer errors
 
 - AI: plain chat takes a fast path (short 1-3 sentence replies; "Explain more" asks the model again, never truncates; Study Mode allows long answers). Language follows the latest message (English / Hindi / Marathi / Hinglish), an explicit request wins, one language per reply. Complex requests (30+ words) show an editable "What I understood" with Use / Edit / Change. Provider failures (timeout, bad reply, "Gemini request failed" arriving as a 200 reply) are detected, retried once quietly, then shown as a friendly line with Retry. Nothing is invented.

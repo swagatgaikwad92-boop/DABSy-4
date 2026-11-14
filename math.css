@@ -1,0 +1,15 @@
+/* math.css (v12) — how worked solutions look. Colours come from the theme tokens, so day and night both stay readable. */
+.mx-p{margin:0 0 .6em;line-height:1.55}
+.mx-h{margin:.9em 0 .35em;font-size:.82rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim);font-weight:650}
+.mx-list{margin:.2em 0 .7em;padding-left:1.3em;line-height:1.5}.mx-list li{margin:.15em 0}
+.mx-step{display:flex;gap:10px;align-items:baseline;margin:0 0 .55em;line-height:1.55}
+.mx-tag{flex:0 0 auto;min-width:4.6em;font-size:.68rem;letter-spacing:.07em;text-transform:uppercase;font-weight:700;color:var(--accent);padding-top:.2em}
+.mx-sb{flex:1;min-width:0;overflow-wrap:anywhere}
+.mx-step[data-kind="answer"],.mx-step[data-kind="final-answer"]{padding:8px 10px;border-radius:14px;background:var(--glass-strong);border:1px solid var(--glass-border)}
+.mx-step[data-kind="answer"] .mx-tag,.mx-step[data-kind="final-answer"] .mx-tag{color:var(--ok)}
+.mx-display{display:block;margin:.5em 0;overflow-x:auto;overflow-y:hidden;padding:.15em 0;-webkit-overflow-scrolling:touch}
+.mx-display .katex-display{margin:0}
+.mx-inline .katex{font-size:1.06em}
+.katex{color:inherit}
+.mx-raw{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em;padding:1px 6px;border-radius:7px;background:var(--glass-strong);border:1px dashed var(--glass-border);white-space:pre-wrap}
+.mx-p code,.mx-sb code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;padding:0 5px;border-radius:6px;background:var(--glass-strong)}

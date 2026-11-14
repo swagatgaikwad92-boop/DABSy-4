@@ -1,0 +1,45 @@
+/* widgets2.css (v12) — widgets that belong to you: drag anywhere, resize, recolour. Loaded after widgets.css. */
+.wg-item{position:absolute;left:0;top:0;width:min(43vw,172px);transform-origin:0 0;transform:scale(var(--s,1));touch-action:none;pointer-events:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;will-change:transform}
+.wg-item:has(.wg-card.in),#widgets.editing .wg-item{pointer-events:auto}
+.wg-item.dragging{z-index:12;transition:none!important}
+.wg-item.dragging .wg-card{animation:none;box-shadow:0 22px 46px rgba(10,16,40,.34),0 0 30px var(--wg-glow),inset 0 1px 0 rgba(255,255,255,.4)}
+.wg-item.pressed:not(.dragging){transform:scale(calc(var(--s,1) * .975));transition:transform .28s var(--ease-spring)}
+.wg-item .wg-card{width:100%;box-sizing:border-box;cursor:grab}
+.wg-item.dragging .wg-card{cursor:grabbing}
+/* resize handle: only in customise mode */
+.wg-grow{position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;display:none;place-items:center;touch-action:none;z-index:3;cursor:nwse-resize}
+.wg-grow::after{content:"";width:14px;height:14px;border-right:3px solid var(--wg-ink,#fff);border-bottom:3px solid var(--wg-ink,#fff);border-radius:0 0 8px 0;opacity:.8}
+#widgets.editing .wg-grow{display:grid}
+#widgets.editing .wg-card{outline-offset:2px}
+/* tools popover */
+.wg-tools{position:absolute;z-index:14;width:min(78vw,276px);padding:12px;border-radius:24px;display:flex;flex-direction:column;gap:10px;pointer-events:auto;color:var(--ink);
+  background:var(--surface-popup);border:1px solid var(--glass-border);box-shadow:var(--shadow-pop);opacity:0;transform:translateY(-6px) scale(.96);transform-origin:top center;transition:opacity .2s,transform .42s var(--ease-spring)}
+.wg-tools.in{opacity:1;transform:none}
+.wg-tools-t{font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim);font-weight:650}
+.wg-tools-row{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.wg-sw{position:relative;width:36px;height:36px;border-radius:50%;border:2px solid transparent;background:linear-gradient(135deg,var(--a),var(--b));box-shadow:0 0 0 1px var(--glass-border);-webkit-tap-highlight-color:transparent;display:grid;place-items:center;transition:transform .25s var(--ease-spring)}
+.wg-sw:active{transform:scale(.9)}
+.wg-sw.on{border-color:var(--ink);box-shadow:0 0 0 2px var(--surface-popup),0 0 0 4px var(--accent)}
+.wg-sw.custom{background:conic-gradient(#e9b6b0,#e8d49a,#a9d3a6,#9cc7e3,#b7a9e6,#e9b6b0);overflow:hidden}
+.wg-sw.custom i{font-style:normal;font-size:1.05rem;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.4);pointer-events:none}
+.wg-pick{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.wg-tl{flex:1;text-align:center;font-size:.82rem;color:var(--ink-dim)}
+.wg-tb{min-width:44px;min-height:40px;padding:0 12px;border-radius:999px;background:var(--glass);border:1px solid var(--glass-border);color:var(--ink);font-size:1.05rem}
+.wg-tb.rm{font-size:.82rem;color:var(--danger);margin-left:auto}
+.wg-tb:active{transform:scale(.94)}
+/* ---- colour presets (each has a night and a day version) ---- */
+.wg-card[data-tone="mist"]{--wg-bg:rgba(76,108,140,.50);--wg-ink:#eef4fb;--wg-dim:rgba(232,240,250,.76);--wg-edge:rgba(210,228,246,.28);--wg-glow:rgba(130,180,225,.22)}
+.wg-card[data-tone="sage"]{--wg-bg:rgba(74,110,90,.50);--wg-ink:#eef6f0;--wg-dim:rgba(230,243,234,.76);--wg-edge:rgba(210,238,218,.26);--wg-glow:rgba(140,200,160,.2)}
+.wg-card[data-tone="lavender"]{--wg-bg:rgba(104,92,156,.52);--wg-ink:#f3f0ff;--wg-dim:rgba(238,233,255,.77);--wg-edge:rgba(224,216,255,.28);--wg-glow:rgba(170,150,235,.24)}
+.wg-card[data-tone="sand"]{--wg-bg:rgba(116,96,68,.54);--wg-ink:#fbf5ea;--wg-dim:rgba(250,242,228,.78);--wg-edge:rgba(246,232,208,.28);--wg-glow:rgba(220,190,140,.2)}
+.wg-card[data-tone="rose"]{--wg-bg:rgba(140,88,100,.50);--wg-ink:#fff1f1;--wg-dim:rgba(255,232,234,.78);--wg-edge:rgba(255,214,218,.28);--wg-glow:rgba(230,150,165,.2)}
+.wg-card[data-tone="midnight"]{--wg-bg:rgba(10,14,44,.66);--wg-ink:#eef1ff;--wg-dim:rgba(220,228,255,.74);--wg-edge:rgba(170,190,255,.22);--wg-glow:rgba(120,150,255,.2)}
+:is(body[data-light="day"],:root[data-theme="light"] body:not([data-light])) .wg-card{--wg-bg:rgba(247,243,235,.50);--wg-ink:#282c3a;--wg-dim:rgba(40,44,62,.70);--wg-edge:rgba(255,255,255,.66);--wg-glow:rgba(190,170,130,.18);--wg-shadow:rgba(60,56,90,.16)}
+:is(body[data-light="day"],:root[data-theme="light"] body:not([data-light])) .wg-card[data-tone="mist"]{--wg-bg:rgba(196,214,228,.58);--wg-ink:#1f2d3a;--wg-dim:rgba(31,45,58,.70);--wg-glow:rgba(120,160,196,.20)}
+:is(body[data-light="day"],:root[data-theme="light"] body:not([data-light])) .wg-card[data-tone="sage"]{--wg-bg:rgba(205,219,200,.60);--wg-ink:#25342a;--wg-dim:rgba(37,52,42,.70);--wg-glow:rgba(130,170,140,.20)}
+:is(body[data-light="day"],:root[data-theme="light"] body:not([data-light])) .wg-card[data-tone="lavender"]{--wg-bg:rgba(219,212,236,.60);--wg-ink:#2b2745;--wg-dim:rgba(43,39,69,.70);--wg-glow:rgba(150,136,200,.20)}
+:is(body[data-light="day"],:root[data-theme="light"] body:not([data-light])) .wg-card[data-tone="sand"]{--wg-bg:rgba(238,229,212,.62);--wg-ink:#3a3022;--wg-dim:rgba(58,48,34,.70);--wg-glow:rgba(190,160,110,.20)}
+:is(body[data-light="day"],:root[data-theme="light"] body:not([data-light])) .wg-card[data-tone="rose"]{--wg-bg:rgba(238,214,214,.60);--wg-ink:#3d2a2d;--wg-dim:rgba(61,42,45,.70);--wg-glow:rgba(200,140,150,.20)}
+:is(body[data-light="day"],:root[data-theme="light"] body:not([data-light])) .wg-card[data-tone="midnight"]{--wg-bg:rgba(34,44,88,.74);--wg-ink:#eef1ff;--wg-dim:rgba(220,228,255,.76);--wg-edge:rgba(255,255,255,.22);--wg-glow:rgba(100,130,230,.2)}
+.wg-card[data-tone="custom"]{}
+@media (prefers-reduced-motion:reduce){.wg-item.pressed:not(.dragging){transition:none}}
