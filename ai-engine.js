@@ -136,16 +136,21 @@
     return r;
   }
 
+  function bareSystem(extra){
+    const L = memory.getSettings().replyLang, n = { en: "English", hi: "Hindi (Devanagari)", mr: "Marathi (Devanagari)" }[L];
+    return ["You are D.A.B.S.y, a patient, careful tutor and personal study butler.", "Today is " + new Date().toDateString() + ".",
+      n ? "Always reply in " + n + " unless the student clearly writes in another language." : "Reply in the language the student wrote in.", extra || ""].filter(Boolean).join("\n");
+  }
   async function generate(o){
     o = o || {};
     if(state === "limited" && !cfg().proxyUrl) return { ok: false, error: "no-proxy" };
     if(cfg().mode === "message"){
       // images can't go through the single-message backend; say so instead of silently dropping them
       if(o.image) return { ok: false, error: "no-image" };
-      const sys = personaSystem(o.system) + (o.json ? "\nRespond with valid JSON only. No markdown." : "");
+      const sys = (o.bare ? bareSystem(o.system) : personaSystem(o.system)) + (o.json ? "\nRespond with valid JSON only. No markdown." : "");
       return withRetry(() => postMessage(sys + "\n\n" + (o.prompt || "")));
     }
-    const r = await post("/v1/generate", { task: o.task || "chat", system: personaSystem(o.system), prompt: o.prompt, json: !!o.json, image: o.image || undefined });
+    const r = await post("/v1/generate", { task: o.task || "chat", system: o.bare ? bareSystem(o.system) : personaSystem(o.system), prompt: o.prompt, json: !!o.json, image: o.image || undefined });
     return r;
   }
   function stripFences(raw){ return String(raw || "").trim().replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim(); }
@@ -387,6 +392,48 @@
   }
 
 
+
+  /* ---------------- v12: the tutor (Study Mode) ----------------
+     Plain text, NOT JSON: JSON turns "\frac" into a form-feed and "\times" into a tab, which is where stray symbols came from.
+     The reply carries LaTeX between $..$ / $$..$$ and is drawn by math-render.js. */
+  const TUTOR_RULES = [
+    "You are teaching a Class 11 student (Maharashtra State Board) who also wants JEE-level conceptual depth. Subjects: Physics, Chemistry, Mathematics.",
+    "ABSOLUTE RULES",
+    "1. Correctness beats confidence. Never invent data, steps, constants or results. Use EXACTLY the numbers the student gave: do not round, convert or change them silently. If a needed value is missing, or the question is ambiguous, ask ONE short clarifying question instead of solving.",
+    "2. Write every formula, equation, symbol and number-with-unit in LaTeX: inline between $...$ and standalone equations between $$...$$ on their own lines. Never write Unicode maths (², √, ×, →, Δ, π) or plain pseudo-maths (x^2, sqrt(x), 1/2 mv2) in the text. Never put a backslash command outside $...$. No tables or code blocks for maths.",
+    "3. Notation: vectors \\vec{F}, \\vec{v}, unit vectors \\hat{i}; scalars plain (F, v); say explicitly whether a quantity is a vector or a scalar, and use |\\vec{F}| for a magnitude. Fractions \\frac{a}{b}, roots \\sqrt{x}, powers x^{2}, subscripts v_{0}, Greek \\theta \\omega \\mu. Units upright with thin spaces: 9.8\\,\\mathrm{m\\,s^{-2}}. Chemistry: \\ce{H2SO4}, \\ce{2H2 + O2 -> 2H2O}. Use the SAME symbol for the same quantity throughout.",
+    "4. Check units and dimensions at each numerical step and say what they are.",
+    "5. If you are not sure of a fact, formula or result, say so plainly and recheck it before answering. A short honest 'I am not certain about this part' is better than a confident mistake. Never skip a step and never jump straight to the answer.",
+    "FOR A NUMERICAL OR DERIVATION use these labels, each starting its own line, in this order (leave one out only if it truly does not apply):",
+    "Given: the data, with units",
+    "Find: what has to be calculated",
+    "Concept: the law or principle, and WHY it applies to this situation, in plain language",
+    "Formula: the equation in symbols, as $$...$$",
+    "Substitute: the numbers put into the formula, with units",
+    "Solve: one equation per line, each following from the previous one",
+    "Check: unit/dimension check, and a sanity check (size, sign, limiting case)",
+    "Answer: the final result with units and sensible significant figures",
+    "FOR A CONCEPT QUESTION: start in simple everyday language, then give the precise statement, then one short example. Short paragraphs, no unexplained jargon. End with one line starting 'Takeaway:'.",
+    "If the student seems confused, do not repeat the earlier explanation: take a different angle, use an analogy or a simpler example, and name the step they may be stuck on.",
+    "No greetings, no filler, no emojis, no markdown headings.",
+  ].join("\n");
+  const CONFUSED = /\b(i\s*(?:still\s*)?(?:don'?t|do not|dont)\s*(?:get|understand|follow)|not\s+clear|confus(?:ed|ing)|makes?\s+no\s+sense|samajh\s*(?:nahi|nhi)|samjat\s*nahi|समझ\s*(?:नहीं|नही)|समजत\s*नाही|still\s+stuck|lost\s+me|again\??$)/i;
+  const isConfused = t => CONFUSED.test(String(t || ""));
+  async function study(text, o){
+    o = o || {};
+    const lang = resolveLang(text);
+    const parts = [ langRule(lang), o.history ? "Conversation so far:\n" + o.history : "" ];
+    if(o.recheck){
+      parts.push("RECHECK. Below is a problem/question and an earlier answer. Solve it again from scratch, independently, without trusting the earlier answer. Then compare. If the earlier answer was fully correct, start with the line 'Verified:' followed by one sentence, then give the clean solution. If anything differed, start with 'Correction:' and say exactly what was wrong, then give the corrected solution. Use the same labels and LaTeX rules.", "Student's question: " + text, "Earlier answer:\n" + String(o.recheck).slice(0, 3500));
+    }else{
+      if(o.confused) parts.push("The student says they are confused. Use a different approach from your previous explanation.");
+      parts.push("Student: " + text);
+    }
+    const r = await generate({ task: "explain", bare: true, system: TUTOR_RULES, prompt: parts.filter(Boolean).join("\n") });
+    if(!r.ok) return { ok: false, error: r.error, text: errorLine(r.error) };
+    return { ok: true, text: window.DABSy.math ? window.DABSy.math.repair(r.text).trim() : r.text.trim() };
+  }
+
   /* ---------------- language ---------------- */
   // Reply in the language/style of the LATEST message. An explicit request ("reply in Hindi") wins and sticks for the session
   // until the student asks for another; the Settings reply-language, if set, comes next; otherwise we mirror what they wrote.
@@ -447,7 +494,7 @@
     return memory.getSession(n || 4).map(m => (m.role === "user" ? "Student: " : "D.A.B.S.y: ") + String(m.text).slice(0, 220)).join("\n");
   }
   const NORMAL_RULE = "Style: a small floating chat card. Answer in 1-3 short sentences (under about 45 words), or a short list of at most 4 items. No preamble, no headings, no markdown symbols. Give the useful core, not a lecture; the student can tap 'Explain more' for depth. If something essential is missing, ask ONE short question instead of guessing.";
-  const STUDY_RULE = "Style: Study Mode. Teach properly: short clear paragraphs, worked steps for maths or procedures, a quick example if it helps, and a one-line takeaway. Be as long as the explanation needs, but organised and easy to scan on a phone. No markdown symbols.";
+  const STUDY_RULE = "Style: Study Mode. Teach properly: short clear paragraphs, worked steps for maths or procedures, a quick example if it helps, and a one-line takeaway. Be as long as the explanation needs, but organised and easy to scan on a phone. Write every formula in LaTeX between $...$ (never Unicode maths like ² or √), use the student's exact numbers, never invent data, and say so if you are unsure. No markdown headings.";
   async function chat(text, o){
     o = o || {};
     const lang = resolveLang(text);
@@ -484,7 +531,7 @@
 
   window.DABSy.ai = {
     status: () => state, statusInfo, check, generate, askJSON, research, localParse, parseGoal, parseIntent,
-    askConflictQuestion, resolveConflictIntent, askDABSy, errorLine, chat, expand, refine, isPlainChat, detectLang, explicitLang, resolveLang, setSessionLang, FAIL_TEXT, limitedReply, parseTimeOfDay, parseDuration, parseDayOffset, subjectOf,
+    askConflictQuestion, resolveConflictIntent, askDABSy, study, isConfused, errorLine, chat, expand, refine, isPlainChat, detectLang, explicitLang, resolveLang, setSessionLang, FAIL_TEXT, limitedReply, parseTimeOfDay, parseDuration, parseDayOffset, subjectOf,
     get canSearch(){ return state !== "limited" && caps.search; },
   };
   window.addEventListener("load", () => setTimeout(check, 1500));

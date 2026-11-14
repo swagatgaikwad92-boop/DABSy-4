@@ -91,10 +91,12 @@
 
   function speak(text){
     if(memory.getSettings().speakReplies === false){ return; } // text still shows; DABSy just stays quiet
+    const M = window.DABSy.math; if(M && text){ text = M.speakable(text); }   // formulas are spoken as words, never as "dollar backslash frac"
     if(!window.speechSynthesis || !text) { bus.emit("voice:speaking:end"); return; }
     window.speechSynthesis.cancel();
     const utt = buildUtterance(text);
     utt.onstart = ()=>bus.emit("voice:speaking:start");
+    utt.onboundary = (e)=>{ if(e.name === "word") bus.emit("voice:boundary"); };
     utt.onend = ()=>bus.emit("voice:speaking:end");
     utt.onerror = ()=>bus.emit("voice:speaking:end");
     window.speechSynthesis.speak(utt);
@@ -110,7 +112,7 @@
       const utt = buildUtterance(text);
       utt.onstart = ()=>bus.emit("voice:speaking:start");
       utt.onboundary = (e)=>{
-        if(e.name === "word" && onWord) onWord(e.charIndex, e.charLength || 0);
+        if(e.name === "word"){ bus.emit("voice:boundary"); if(onWord) onWord(e.charIndex, e.charLength || 0); }
       };
       utt.onend = ()=>{ bus.emit("voice:speaking:end"); resolve(); };
       utt.onerror = ()=>{ bus.emit("voice:speaking:end"); resolve(); };
@@ -121,5 +123,5 @@
   function stopSpeaking(){ if(window.speechSynthesis) window.speechSynthesis.cancel(); }
 
   window.DABSy = window.DABSy || {};
-  window.DABSy.voice = { startListening, stopListening, speak, speakWithTracking, stopSpeaking, getVoices: ()=>voices, isListening: ()=>listening };
+  window.DABSy.voice = { startListening, stopListening, speak, speakWithTracking, stopSpeaking, getVoices: ()=>voices, isListening: ()=>listening, isSpeaking: ()=>!!(window.speechSynthesis && window.speechSynthesis.speaking) };
 })();

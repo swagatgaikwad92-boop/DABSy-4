@@ -1,0 +1,52 @@
+/* timer.css (v12) — the study timer as a small floating glass companion (not a dashboard card).
+   Compact: ring + big time + pause/resume. Tap (or the chevron) opens the rest. Drag to move; it snaps left / centre / right. */
+body #session-dock{
+  --sd-tx:-50%; --sd-ty:0px;
+  position:fixed; left:50%; right:auto; top:auto; bottom:calc(var(--sd-b,14px) + var(--sab)); z-index:30;
+  width:min(244px,calc(100% - 24px)); padding:0; gap:0; border-radius:999px; display:block; overflow:hidden;
+  transform:translate(calc(var(--sd-tx) + var(--sd-dx,0px)),calc(var(--sd-ty) + 26px)) scale(.94); opacity:0;
+  background:var(--surface-dock); border:1px solid var(--glass-border);
+  box-shadow:var(--lg-shadow,var(--shadow-pop)),0 0 30px color-mix(in srgb,var(--accent) 16%,transparent);
+  transition:transform .55s var(--ease-settle,var(--ease-out)),opacity .3s,width .5s var(--ease-settle,var(--ease-out)),border-radius .45s var(--ease-soft),bottom .4s var(--ease-soft),left .4s var(--ease-soft),right .4s var(--ease-soft);
+}
+body #session-dock.in{ transform:translate(calc(var(--sd-tx) + var(--sd-dx,0px)),var(--sd-ty)) scale(1); opacity:1 }
+body #session-dock[data-x="l"]{ left:12px; right:auto; --sd-tx:0px }
+body #session-dock[data-x="r"]{ left:auto; right:12px; --sd-tx:0px }
+body #session-dock.moving{ transition:none; cursor:grabbing }
+body #session-dock[data-open="1"]{ width:min(430px,calc(100% - 24px)); border-radius:30px }
+body #session-dock[data-open="1"][data-x="l"],body #session-dock[data-open="1"][data-x="r"]{ }
+body #session-dock[data-kind="break"]{ background:linear-gradient(160deg,color-mix(in srgb,var(--mint) 36%,var(--surface-dock-base,transparent)),transparent),var(--surface-dock); }
+:root[data-theme="dark"] body #session-dock[data-kind="break"]{ background:linear-gradient(160deg,rgba(40,86,92,.55),rgba(12,26,40,.8)); }
+body.cmd-open #session-dock,body.kb-open #session-dock{ bottom:auto; top:calc(12px + var(--sat,0px)); --sd-ty:0px }
+body.cmd-open #session-dock:not(.in),body.kb-open #session-dock:not(.in){ transform:translate(calc(var(--sd-tx) + var(--sd-dx,0px)),-26px) scale(.94) }
+body #session-dock .sd-top{ display:flex; align-items:center; gap:10px; padding:8px 8px 8px 9px; touch-action:none; cursor:grab; -webkit-tap-highlight-color:transparent }
+body #session-dock .sd-ring{ position:relative; flex:0 0 46px; width:46px; height:46px; border-radius:50% }
+body #session-dock .sd-ring circle{ stroke-width:3 }
+body #session-dock .sd-ring .fg{ stroke:var(--accent); filter:drop-shadow(0 0 3px color-mix(in srgb,var(--accent) 60%,transparent)) }
+body #session-dock .sd-dot{ position:absolute; left:50%; top:50%; width:10px; height:10px; margin:-5px 0 0 -5px; border-radius:50%; background:var(--accent); opacity:.9; animation:sd-breathe 3.2s ease-in-out infinite }
+body #session-dock[data-run="paused"] .sd-dot{ animation:none; opacity:.35 }
+body #session-dock[data-run="running"] .sd-ring{ animation:sd-glow 3.6s ease-in-out infinite }
+body #session-dock .sd-clock{ flex:1; min-width:0; display:flex; flex-direction:column; line-height:1.1 }
+body #session-dock #sd-time{ position:static; display:block; font-size:1.5rem; font-weight:650; letter-spacing:-.02em; font-variant-numeric:tabular-nums; color:var(--ink); transition:opacity .3s }
+body #session-dock[data-run="paused"] #sd-time{ opacity:.6 }
+body #session-dock .sd-kind{ font-size:.68rem; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:3px }
+body #session-dock .sd-pc{ flex:0 0 auto; width:46px; height:46px; border-radius:50%; display:grid; place-items:center; background:var(--grad-accent); color:var(--on-accent); box-shadow:0 4px 14px color-mix(in srgb,var(--accent) 26%,transparent); transition:transform .3s var(--ease-settle,var(--ease-out)) }
+body #session-dock .sd-pc:active{ transform:scale(.9) }
+body #session-dock .sd-chev{ flex:0 0 32px; width:32px; height:32px; border-radius:50%; display:grid; place-items:center; color:var(--ink-dim); margin-right:-2px }
+body #session-dock .sd-chev svg{ transition:transform .45s var(--ease-settle,var(--ease-out)) }
+body #session-dock[data-open="1"] .sd-chev svg{ transform:rotate(180deg) }
+body #session-dock[data-open="0"] .sd-chev{ display:none }
+body #session-dock[data-open="0"] .sd-top{ padding-right:10px }
+/* the rest slides open */
+body #session-dock .sd-body{ display:grid; grid-template-rows:0fr; opacity:0; padding:0 14px; transition:grid-template-rows .5s var(--ease-soft),opacity .3s,padding .4s; pointer-events:none }
+body #session-dock .sd-body>*{ overflow:hidden; min-height:0 }
+body #session-dock[data-open="1"] .sd-body{ grid-template-rows:auto auto auto; opacity:1; padding:0 14px 14px; pointer-events:auto; row-gap:10px; display:flex; flex-direction:column }
+body #session-dock[data-open="0"] .sd-body{ display:none }
+body #session-dock .sd-info{ min-width:0 }
+body #session-dock .sd-actions{ display:flex; gap:8px; flex-wrap:wrap }
+body #session-dock .sd-actions .btn{ flex:1 1 auto; min-width:0; padding:6px 10px }
+@keyframes sd-breathe{ 0%,100%{ transform:scale(.8); opacity:.55 } 50%{ transform:scale(1.15); opacity:1 } }
+@keyframes sd-glow{ 0%,100%{ box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 0%,transparent) } 50%{ box-shadow:0 0 16px 2px color-mix(in srgb,var(--accent) 28%,transparent) } }
+@media (prefers-reduced-motion:reduce){ body #session-dock .sd-dot,body #session-dock[data-run="running"] .sd-ring{ animation:none } }
+body.reduce-motion #session-dock .sd-dot,body.reduce-motion #session-dock .sd-ring{ animation:none!important }
+body.session-active #subtitle{ bottom:calc(96px + var(--sab)) }

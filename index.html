@@ -4,10 +4,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>D.A.B.S.y</title>
-<meta name="theme-color" content="#0f1318" />
+<meta name="theme-color" content="#0b0f22" />
 <meta name="color-scheme" content="dark light" />
 <script>/* v8: apply the saved theme before first paint (no dark/light flash) */
-(function(){try{var s=JSON.parse(localStorage.getItem("dabsy_settings")||"{}"),t=s.theme;if(t==="auto"){var n=new Date(),hh=n.getHours()+n.getMinutes()/60;t=(hh>=6.5&&hh<18.5)?"light":"dark";}if(t!=="light")t="dark";document.documentElement.setAttribute("data-theme",t);if(t==="light"){var m=document.querySelector('meta[name="theme-color"]');m&&m.setAttribute("content","#fbf6e6");}}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();
+(function(){try{var s=JSON.parse(localStorage.getItem("dabsy_settings")||"{}"),t=s.theme;if(t==="auto"){var n=new Date(),hh=n.getHours()+n.getMinutes()/60;t=(hh>=6.5&&hh<18.5)?"light":"dark";}if(t!=="light")t="dark";document.documentElement.setAttribute("data-theme",t);if(t==="light"){var m=document.querySelector('meta[name="theme-color"]');m&&m.setAttribute("content","#ebe7dd");}}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();
 </script>
 <meta name="description" content="D.A.B.S.y — your digital desk pet and personal student butler." />
 <link rel="manifest" href="./manifest.json" />
@@ -30,6 +30,14 @@
 <link rel="stylesheet" href="./magic.css" />
 <link rel="stylesheet" href="./widgets.css" />
 <link rel="stylesheet" href="./dayplan.css" />
+<link rel="stylesheet" href="./chatbox.css" />
+<link rel="stylesheet" href="./study.css" />
+<link rel="stylesheet" href="./timepicker.css" />
+<link rel="stylesheet" href="./widgets2.css" />
+<link rel="stylesheet" href="./livetalk.css" />
+<link rel="stylesheet" href="./timer.css" />
+<link rel="stylesheet" href="./day.css" />
+<link rel="stylesheet" href="./glass.css" />
 </head>
 <body>
 
@@ -85,7 +93,8 @@
         <button id="mic-btn" type="button" aria-label="Talk to D.A.B.S.y">
           <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
         </button>
-        <input id="text-input" type="text" placeholder="Tell me what you want to do…" autocomplete="off" enterkeyhint="send" aria-label="Message to D.A.B.S.y" />
+        <textarea id="text-input" rows="1" placeholder="Tell me what to do…" autocomplete="off" autocapitalize="sentences" enterkeyhint="enter" aria-label="Message to D.A.B.S.y"></textarea>
+        <button id="send-btn" type="button" aria-label="Send message" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
         <div id="study-blob-docked" aria-label="Study Block is on. Drag out or tap to end it.">📖</div>
       </div>
       <div id="study-blob" role="button" tabindex="0" aria-label="Study Block. Drag into the chat or tap to start it.">📖</div>
@@ -127,6 +136,7 @@
 <script src="./briefing-engine.js"></script>
 <script src="./live-talk.js"></script>
 <script src="./pet-engine.js"></script>
+  <script src="./math-render.js"></script>
   <script src="./projection-engine.js"></script>
   <script src="./study-blob-engine.js"></script>
   <script src="./study-engine.js"></script>
@@ -137,6 +147,9 @@
 <script src="./habitats-data.js"></script>
 <script src="./world-engine.js"></script>
 <script src="./viewport-engine.js"></script>
+<script src="./chatbox-engine.js"></script>
+<script src="./time-picker.js"></script>
+<script src="./glass-engine.js"></script>
 <script src="./widget-engine.js"></script>
 <script src="./app.js"></script>
   <script src="./boot.js"></script>

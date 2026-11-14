@@ -1,0 +1,20 @@
+/* study.css (v12) — the tutor surface */
+#projection-content{ padding-bottom:8px; scroll-behavior:smooth }
+.st-group{ margin:0 0 16px }
+.st-q{ margin:0 0 8px auto; max-width:90%; padding:9px 13px; border-radius:18px 18px 6px 18px; background:var(--glass-strong); border:1px solid var(--glass-border); font-size:.92rem; line-height:1.4; overflow-wrap:anywhere; color:var(--ink) }
+.st-a{ font-size:.97rem; color:var(--ink) }
+.st-body>*{ transition:background .25s, box-shadow .25s; border-radius:12px }
+.st-body>.reading{ background:var(--glass-strong); box-shadow:-3px 0 0 var(--accent-warm); padding-left:8px; margin-left:-8px }
+.st-err{ color:var(--danger) }
+.st-think{ display:flex; align-items:center; gap:6px; color:var(--ink-dim); font-size:.9rem; padding:6px 2px }
+.st-think i{ width:7px; height:7px; border-radius:50%; background:var(--accent); opacity:.35; animation:st-dot 1.2s ease-in-out infinite }
+.st-think i:nth-child(2){ animation-delay:.15s } .st-think i:nth-child(3){ animation-delay:.3s }
+.st-think span{ margin-left:6px }
+@keyframes st-dot{ 0%,100%{ opacity:.25; transform:translateY(0) } 50%{ opacity:1; transform:translateY(-3px) } }
+.st-actions{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 2px }
+.st-actions button{ min-height:38px; padding:0 14px; border-radius:999px; font-size:.82rem; background:var(--glass); border:1px solid var(--glass-border); color:var(--ink) }
+.st-actions button:active{ transform:scale(.96) }
+#st-follow{ display:flex; align-items:flex-end; gap:8px; margin:0; padding:6px 6px 6px 14px; border-radius:24px; background:var(--glass-strong); border:1px solid var(--glass-border) }
+#st-follow textarea{ flex:1; min-width:0; resize:none; border:0; outline:0; background:none; color:var(--ink); font-size:16px; line-height:1.4; padding:8px 0; max-height:110px; user-select:text; -webkit-user-select:text }
+#st-follow button{ width:38px; height:38px; border-radius:50%; background:var(--grad-accent); color:var(--on-accent); font-size:1.1rem; font-weight:700; flex:0 0 auto }
+@media (prefers-reduced-motion:reduce){ .st-think i{ animation:none; opacity:.7 } }

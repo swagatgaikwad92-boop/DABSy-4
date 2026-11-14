@@ -24,7 +24,7 @@
     const next = DAY.map(t => (t - h + 24) % 24).filter(d => d > 0.0005).sort((x, y) => x - y)[0];
     boundT = setTimeout(() => { apply(true); scheduleBoundary(); }, Math.max(1000, next * 3600000 + 500));
   }
-  const META = { dark: "#0f1318", light: "#fbf6e6" };
+  const META = { dark: "#0b0f22", light: "#ebe7dd" };
   let applied = null;
 
   const choice = () => { const t = memory.getSettings().theme; return t === "light" || t === "auto" ? t : "dark"; };

@@ -31,3 +31,36 @@
 .dp-note{margin:10px 0 0;text-align:center;font-size:.74rem;color:var(--ink-faint)}
 :root[data-theme="light"] .dp-row{background:rgba(40,32,80,.04)}
 :root[data-theme="light"] .dp-btn,:root[data-theme="light"] .dp-add input{background:rgba(40,32,80,.05)}
+
+/* ===== v12 — direct editing: drag the grip, hold the time ===== */
+.dp-row{flex-wrap:nowrap;position:relative;touch-action:pan-y}
+.dp-row.work{flex-wrap:wrap}
+.dp-row .dp-ctl{flex:0 0 auto;margin-left:auto;gap:4px}
+.dp-grip{flex:0 0 28px;width:28px;min-height:44px;display:grid;place-items:center;margin:-4px 0 -4px -6px;border-radius:10px;color:var(--ink-faint);font-size:1rem;letter-spacing:-3px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;background:transparent;border:0;-webkit-tap-highlight-color:transparent}
+.dp-grip.ph{cursor:default}
+.dp-grip:not(.ph):active,.dp-row.dragging .dp-grip{color:var(--accent);cursor:grabbing}
+.dp-grip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.dp-time-btn{position:relative;flex:0 0 5.6em;min-height:44px;padding:0 8px;margin:-4px 0;border-radius:12px;text-align:left;color:var(--ink);font-weight:600;font-size:.86rem;background:transparent;border:1px solid transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .2s,border-color .2s,transform .2s var(--ease-spring)}
+.dp-time-btn:focus-visible{outline:2px solid var(--accent)}
+.dp-time-btn.holding{background:var(--glass-strong);border-color:var(--accent);transform:scale(1.04);animation:dp-hold .46s linear}
+@keyframes dp-hold{from{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}to{box-shadow:0 0 0 7px transparent}}
+.dp-pin{display:inline-block;width:6px;height:6px;margin-left:6px;border-radius:50%;background:var(--accent);vertical-align:middle}
+.dp-row.pinned .dp-title small{color:var(--accent)}
+.dp-row.dragging{z-index:6;background:var(--glass-strong);box-shadow:0 14px 34px rgba(30,40,80,.28);border-color:var(--accent);transition:box-shadow .2s;will-change:transform;pointer-events:none}
+.dp-day.dp-dragging{user-select:none;-webkit-user-select:none}
+.dp-row.drop-before::before,.dp-row.drop-after::after{content:"";position:absolute;left:8px;right:8px;height:3px;border-radius:3px;background:var(--accent);box-shadow:0 0 10px var(--accent)}
+.dp-row.drop-before::before{top:-5px}.dp-row.drop-after::after{bottom:-5px}
+.dp-row.conflict{border-color:var(--danger);background:color-mix(in srgb,var(--danger) 8%,transparent)}
+.dp-warn{display:block;margin-top:2px;color:var(--danger)!important;font-weight:600}
+.dp-conflicts{margin:0 0 10px;padding:10px 12px;border-radius:16px;border:1px solid var(--danger);background:color-mix(in srgb,var(--danger) 9%,transparent);font-size:.86rem}
+.dp-cf{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:3px 0}
+.dp-cf .dp-btn{white-space:nowrap;padding:0 12px}
+@media (prefers-reduced-motion:reduce){.dp-time-btn.holding{animation:none}}
+/* v12 tidy: one line per activity */
+.dp-row.work{flex-wrap:nowrap;align-items:center}
+.dp-row .dp-title{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.dp-row .dp-time,.dp-row .dp-time-btn{white-space:nowrap}
+.dp-row.brk .dp-time,.dp-row.fixed .dp-time{flex:0 0 5.6em;padding-left:22px;box-sizing:border-box}
+.dp-row .dp-ctl{gap:2px;flex:0 0 auto}
+.dp-row .dp-ctl .dp-btn{min-width:36px;width:36px;min-height:40px;padding:0}
+.dp-row.work{padding-right:6px}

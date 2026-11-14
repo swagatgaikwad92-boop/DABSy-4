@@ -1,0 +1,82 @@
+/* ============================================================
+   glass.css (v12) — DABSy's Liquid Glass material. Loaded last.
+   Layers (back to front): environment blur -> tinted translucent fill -> soft specular sheen that follows your touch
+   -> illuminated edge ring -> inner highlight + faint lower reflection -> soft drop shadow.
+   Motion: press = a gentle sink, release = a natural settle (one small overshoot, never a bounce).
+   Cheap where it must be: body.lite-gfx / reduced transparency / reduced motion all fall back to a flat, solid, still version.
+   ============================================================ */
+:root{
+  --ease-settle:cubic-bezier(.3,1.22,.55,1);
+  --lg-blur:22px; --lg-sat:1.55;
+}
+@supports (transition-timing-function:linear(0,1)){
+  :root{ --ease-settle:linear(0,.2178 2.1%,.7 5.9%,.9604 9.6%,1.0306 12.5%,1.0541 15.2%,1.0529 18.2%,1.0206 24.2%,.9985 30%,.9964 40%,1); }
+}
+
+/* 1 — environmental blur on the top-level surfaces (not on rows nested inside a sheet: that would blur twice) */
+:is(#input-dock,.popup-card,.toast,#subtitle,#live-talk,.tp-panel,.wg-tools,#wg-panel,#wg-bar,.sheet,.icon-btn.glass,.btn.glass,#session-dock,.wg-card,.st-q,#st-follow){
+  -webkit-backdrop-filter:blur(var(--lg-blur)) saturate(var(--lg-sat)); backdrop-filter:blur(var(--lg-blur)) saturate(var(--lg-sat));
+}
+/* a touch more see-through than before, still comfortably readable (ink contrast is unchanged) */
+:root[data-theme="light"]{
+  --surface-popup:linear-gradient(160deg,rgba(250,247,241,.86),rgba(238,234,225,.86));
+  --surface-toast:linear-gradient(160deg,rgba(250,247,241,.86),rgba(238,234,225,.88));
+  --surface-sheet:linear-gradient(180deg,rgba(249,246,240,.90),rgba(237,233,224,.93));
+  --surface-dock:linear-gradient(160deg,rgba(251,249,244,.76),rgba(240,236,227,.78));
+  --subtitle-bg:rgba(250,247,241,.70);
+}
+:root[data-theme="dark"]{
+  --surface-popup:linear-gradient(160deg,rgba(32,42,88,.78),rgba(14,18,46,.84));
+  --surface-toast:linear-gradient(160deg,rgba(32,42,88,.78),rgba(14,18,46,.86));
+  --surface-sheet:linear-gradient(180deg,rgba(26,34,72,.88),rgba(11,15,38,.94));
+  --surface-dock:linear-gradient(160deg,rgba(32,42,88,.62),rgba(13,17,42,.72));
+  --subtitle-bg:rgba(12,16,40,.50);
+}
+
+/* 2 — edges, depth, reflection */
+:is(#input-dock,.popup-card,.toast,#subtitle,#live-talk,.tp-panel,.wg-tools,#wg-panel,#wg-bar,.wg-card,#session-dock){
+  isolation:isolate;
+  border:1px solid var(--glass-border);
+  box-shadow:var(--lg-shadow),inset 0 1px 0 var(--lg-hi),inset 0 0 0 1px var(--lg-lo),inset 0 -14px 22px -16px var(--lg-lo);
+}
+.sheet{ box-shadow:var(--shadow-sheet),inset 0 1px 0 var(--lg-hi); }
+:where(.rcard,.rc-row,.nc-item,.plan-b){ position:relative; }
+:root :is(.rcard,.rc-list .rc-row,.nc-item,.plan-b){ isolation:isolate; }
+
+/* 3 — specular sheen (follows the touch point) + illuminated edge. Only on non-scrolling surfaces. */
+:is(#input-dock:not(.diffusing-in):not(.diffusing-out),.popup-card,.toast,#subtitle,#live-talk,.tp-panel,.wg-tools,.wg-card,#session-dock,.rcard,.rc-row,.nc-item,.plan-b)::before{
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:-1;
+  background:radial-gradient(140px 105px at var(--gx,22%) var(--gy,0%),rgba(255,255,255,var(--lg-sheen,.26)),transparent 70%),linear-gradient(125deg,rgba(255,255,255,calc(var(--lg-sheen,.26) * .55)),transparent 40%);
+  opacity:.9; transition:opacity .4s var(--ease-soft);
+}
+:is(#input-dock,.popup-card,.toast,#live-talk,.tp-panel,.wg-tools,.wg-card,#session-dock,.rcard)::after{
+  content:""; position:absolute; inset:0; border-radius:inherit; padding:1px; pointer-events:none; z-index:2;
+  background:linear-gradient(var(--ga,140deg),var(--lg-ring),rgba(255,255,255,0) 30%,rgba(255,255,255,0) 66%,var(--lg-ring));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude;
+  opacity:.5; transition:opacity .4s var(--ease-soft);
+}
+:is(.lg-press,.wg-item.pressed) :is(.wg-card)::after,.lg-press::after{ opacity:.95; }
+.lg-press::before{ opacity:1; }
+.wg-card::before{ background:radial-gradient(140px 105px at var(--gx,22%) var(--gy,0%),rgba(255,255,255,var(--lg-sheen,.26)),transparent 70%),linear-gradient(125deg,rgba(255,255,255,calc(var(--lg-sheen,.26) * .55)),transparent 40%); }
+
+/* 4 — touch: a gentle sink while pressed, a natural settle when released (individual `scale` property: it composes with existing transforms) */
+:is(.rcard,.rc-list .rc-row,.nc-item,.plan-b,.popup-card,.toast,#session-dock,.btn,.icon-btn,.wg-chip,.rc-pchip,.st-actions button,.tp-chip){
+  transition-property:scale,filter,background-color,border-color,box-shadow,opacity,transform;
+  transition-duration:.55s,.25s,.25s,.25s,.25s,.25s,.3s; transition-timing-function:var(--ease-settle),ease,ease,ease,ease,ease,var(--ease-soft);
+}
+.lg-press{ scale:.985; filter:brightness(1.035); transition-duration:.14s,.14s,.25s,.25s,.25s,.25s,.3s!important; transition-timing-function:ease-out!important; }
+:is(.btn,.icon-btn,.wg-chip,.rc-pchip,.st-actions button,.tp-chip).lg-press{ scale:.95; }
+.wg-card.lg-press{ scale:1; filter:none; }
+.rc-row,.plan-b,.nc-item{ transition-property:scale,filter,background-color,border-color,box-shadow,opacity,transform,height,max-height; }
+
+/* 5 — fall-backs */
+body.lite-gfx{ --lg-blur:9px; --lg-sat:1.2; --lg-sheen:0; }
+body.lite-gfx :is(#input-dock,.popup-card,.toast,#subtitle,#live-talk,.tp-panel,.wg-tools,.wg-card,#session-dock,.rcard,.rc-row,.nc-item,.plan-b)::before,
+body.lite-gfx :is(#input-dock,.popup-card,.toast,#live-talk,.tp-panel,.wg-tools,.wg-card,#session-dock,.rcard)::after{ display:none; }
+@media (prefers-reduced-transparency:reduce){
+  :is(#input-dock,.popup-card,.toast,#subtitle,#live-talk,.tp-panel,.wg-tools,#wg-panel,#wg-bar,.sheet,.icon-btn.glass,.btn.glass,#session-dock,.wg-card,.st-q,#st-follow){ -webkit-backdrop-filter:none; backdrop-filter:none; }
+  :root[data-theme="light"]{ --surface-popup:#f3f0e8; --surface-toast:#f3f0e8; --surface-sheet:#f3f0e8; --surface-dock:#f3f0e8; --subtitle-bg:#f3f0e8; }
+  :root[data-theme="dark"]{ --surface-popup:#171d42; --surface-toast:#171d42; --surface-sheet:#10163a; --surface-dock:#171d42; --subtitle-bg:#121834; }
+}
+@media (prefers-reduced-motion:reduce){ .lg-press{ scale:1; } :is(.rcard,.rc-row,.nc-item,.plan-b,.btn,.icon-btn){ transition-duration:.01s; } }
+body.reduce-motion .lg-press{ scale:1 }

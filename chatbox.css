@@ -1,0 +1,24 @@
+/* chatbox.css (v12) — adaptive-height message box */
+#input-dock{ align-items:flex-end; border-radius:26px; padding:6px 8px 6px 8px; transition:background 550ms var(--ease-soft),border-color 550ms var(--ease-soft),border-radius .2s var(--ease-soft); }
+#mic-btn,#send-btn,#study-blob-docked{ margin-bottom:1px; }
+#text-input{
+  flex:1; min-width:0; resize:none; display:block; overflow-y:auto; overscroll-behavior:contain;
+  min-height:var(--tap-min,44px); max-height:min(calc(1.45em * 5 + 20px), 38vh);
+  line-height:1.45; padding:10px 4px; margin:0; box-sizing:border-box; field-sizing:content;
+  -webkit-overflow-scrolling:touch; scrollbar-width:thin;
+}
+#text-input::-webkit-scrollbar{ width:3px }
+#text-input::-webkit-scrollbar-thumb{ background:var(--ink-faint); border-radius:3px }
+#send-btn{
+  flex:0 0 auto; width:42px; height:42px; border-radius:50%; display:grid; place-items:center;
+  background:var(--grad-accent); color:var(--on-accent); border:0;
+  box-shadow:0 4px 14px rgba(110,100,200,.28); transition:transform .22s var(--ease-spring), opacity .2s;
+}
+#send-btn[hidden]{ display:none }
+#send-btn:active{ transform:scale(.9) }
+/* the reply card follows the real dock height, so a tall dock never covers it */
+:root body.kb-open #subtitle{ bottom:calc(var(--kb) + var(--dock-h,64px) + 22px); max-height:calc(var(--vvh) - var(--dock-h,64px) - 90px); }
+body.cmd-open #subtitle{ bottom:calc(171px + var(--dock-h,64px) + var(--sab)); }
+#text-input:focus,#text-input:focus-visible{ outline:none; box-shadow:none; }
+#input-dock{ gap:6px; }
+#send-btn{ width:40px; height:40px; }
