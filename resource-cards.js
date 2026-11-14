@@ -151,9 +151,10 @@
     opts = opts || {};
     const D = window.DABSy, planner = D.planner;
     return new Promise(resolve => {
-      const resources = found.resources.slice();
-      const sug = planner.suggest(resources, opts.minutes || 30);
-      const on = new Set(sug.ids);
+      let resources = found.resources.slice();
+      let sug = planner.suggest(resources, opts.minutes || 30);
+      let on = new Set(sug.ids);
+      let prefState = { busy: false, text: "", applied: found.prefs || "", empty: false, note: "", prev: null };
       let finished = false;
       const sh = ui.sheet({ title: opts.title || "Recommended for you", onClose: () => { if(!finished){ finished = true; resolve(null); } } });
       const body = sh.body; body.classList.add("rc-body", "rc-list");
@@ -164,6 +165,8 @@
       function render(){
         body.innerHTML = "";
         if(opts.intro) body.append(ui.el("p", { class: "hint rc-intro" }, opts.intro));
+        if(prefState.busy){ body.append(loadingEl()); body.append(prefBox()); return; }
+        if(prefState.empty){ body.append(emptyEl()); body.append(prefBox()); return; }
         body.append(ui.el("div", { class: "rc-count", "aria-live": "polite" }, `${resources.length} ${resources.length === 1 ? "result" : "results"} · ${on.size} in your ${opts.minutes || 30}-minute plan (${minutesOf()} min of material)`));
         resources.forEach(r => {
           const included = on.has(r.id), dur = r.durationMin ? r.durationMin + " min" : (r.type === "pdf" ? "document" : "reading");
@@ -186,6 +189,46 @@
         body.append(ui.el("div", { class: "popup-actions" },
           ui.el("button", { class: "btn", type: "button", onclick: () => finish({ chosen: [] }) }, "Plan without material"),
           ui.el("button", { class: "btn primary", type: "button", disabled: !n, onclick: () => finish({ chosen: chosenNow(), start: true }) }, n ? `Start study plan (${n})` : "Pick something")));
+        if(opts.refine) body.append(prefBox());            // v12: always the very last thing in the card
+      }
+
+      /* ---- v12: tell DABSy, in your own words, what kind of material you prefer ---- */
+      const CHIPS = ["Visual explanations", "Short videos", "Beginner-friendly", "Practice problems", "No long PDFs"];
+      function loadingEl(){
+        const w = ui.el("div", { class: "rc-loading", role: "status", "aria-live": "polite" }, ui.el("div", { class: "rc-spin", "aria-hidden": "true" }), ui.el("span", {}, "Looking again with your preferences…"));
+        for(let i = 0; i < 3; i++) w.append(ui.el("div", { class: "rc-skel", "aria-hidden": "true" }));
+        return w;
+      }
+      function emptyEl(){
+        return ui.el("div", { class: "rc-empty", role: "status" }, ui.el("b", {}, "Nothing matched that"), ui.el("p", {}, prefState.note || "I couldn't find anything I'd trust with those preferences."),
+          prefState.prev ? ui.el("button", { class: "btn sm", type: "button", onclick: () => { applyFound(prefState.prev); prefState.empty = false; prefState.applied = prefState.prev.prefs || ""; render(); } }, "Show my earlier results") : null);
+      }
+      function applyFound(f){ resources = f.resources.slice(); sug = planner.suggest(resources, opts.minutes || 30); on = new Set(sug.ids); }
+      async function submitPrefs(text){
+        text = String(text || "").trim(); if(!text || prefState.busy) return;
+        prefState.text = text; prefState.busy = true; prefState.empty = false; render();
+        let f = null;
+        try{ f = await opts.refine(text); }catch(e){ f = null; }
+        prefState.busy = false;
+        const real = f && f.resources && f.resources.filter(r => r.origin === "search" || r.origin === "library");
+        if(!f){ prefState.empty = true; prefState.prev = { resources, prefs: prefState.applied }; prefState.note = "I couldn't search just now, so your earlier results are still the best I have."; }
+        else if(!real.length){ prefState.empty = true; prefState.prev = { resources, prefs: prefState.applied }; prefState.note = f.note || ""; }
+        else { applyFound(f); prefState.applied = f.prefs || ""; prefState.note = f.note || ""; }
+        render();
+        try{ body.querySelector(".rc-pref textarea").focus({ preventScroll: true }); }catch(e){}
+      }
+      function prefBox(){
+        const ta = ui.el("textarea", { rows: "2", placeholder: "e.g. I want visual explanations, animated videos and beginner-friendly material. Avoid lengthy PDFs.", "aria-label": "Tell me what kind of material you prefer", enterkeyhint: "send", disabled: prefState.busy ? "" : null });
+        ta.value = prefState.text;
+        const fit = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 120) + "px"; }; ta.addEventListener("input", () => { prefState.text = ta.value; fit(); go.disabled = !ta.value.trim(); });
+        const go = ui.el("button", { class: "btn primary sm", type: "button", disabled: !prefState.text.trim() || prefState.busy ? "" : null, onclick: () => submitPrefs(ta.value) }, prefState.busy ? "Searching…" : "Update recommendations");
+        ta.addEventListener("keydown", e => { if(e.key === "Enter" && !e.shiftKey && !window.matchMedia("(pointer:coarse)").matches){ e.preventDefault(); submitPrefs(ta.value); } });
+        const chips = ui.el("div", { class: "rc-pchips" }, CHIPS.map(c => ui.el("button", { class: "rc-pchip", type: "button", disabled: prefState.busy ? "" : null, onclick: () => { ta.value = (ta.value.trim() ? ta.value.trim().replace(/[.]?$/, ", ") : "") + c.toLowerCase().replace(/^no /, "avoid ") ; prefState.text = ta.value; go.disabled = false; fit(); ta.focus(); } }, c)));
+        const w = ui.el("section", { class: "rc-pref", "aria-label": "Your material preferences" },
+          ui.el("div", { class: "rc-pref-t" }, "Not quite right? Tell me what you prefer"),
+          prefState.applied ? ui.el("div", { class: "rc-pref-on" }, "Showing: " + prefState.applied) : null, chips, ui.el("div", { class: "rc-pref-row" }, ta, go));
+        setTimeout(fit, 0);
+        return w;
       }
       render();
     });

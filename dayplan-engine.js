@@ -50,9 +50,9 @@
   function fixedFor(key){                                  // everything already on that day (tasks with a time + calendar events), as ms intervals
     return tasks.busyForDate(key).map(b => ({ s: b.s, e: b.e, title: b.title, src: b.src })).sort((a, b) => a.s - b.s);
   }
-  function freeIntervals(key, fromMin, toMin_){
+  function freeIntervals(key, fromMin, toMin_, extra){
     const win = [atKey(key, fromMin).getTime(), atKey(key, toMin_).getTime()];
-    const busy = fixedFor(key).map(b => [b.s - BUF * 60000, b.e + BUF * 60000]).sort((a, b) => a[0] - b[0]);
+    const busy = fixedFor(key).map(b => [b.s - BUF * 60000, b.e + BUF * 60000]).concat(extra || []).sort((a, b) => a[0] - b[0]);
     const out = []; let cur = win[0];
     busy.forEach(([s, e]) => { if(e <= cur) return; if(s > cur) out.push([cur, Math.min(s, win[1])]); cur = Math.max(cur, e); });
     if(cur < win[1]) out.push([cur, win[1]]);
@@ -77,7 +77,14 @@
     const queue = spec.queue.map(q => Object.assign({}, q, { left: q.durationMin, parts: 0 }));
     const total = q => Math.ceil(q.durationMin / CHUNK) > 1 && q.durationMin > 60;
     spec.days.forEach(day => {
-      const free = freeIntervals(day.key, day.from, day.to);
+      // v12: an activity the student placed (dragged, or its time set by hand) keeps that exact time; the rest flows around it
+      const pinBusy = [];
+      queue.filter(q => q.left > 0 && q.pin && q.pin.key === day.key).forEach(q => {
+        const st = atKey(day.key, q.pin.min).getTime(), len = q.left;
+        items.push({ kind: "work", qid: q.qid, title: q.title, taskId: q.taskId || null, isNew: !!q.isNew, priority: q.priority, why: q.why, subject: q.subject, part: 1, start: new Date(st), end: new Date(st + len * 60000), durationMin: len, dayKey: day.key, pinned: true });
+        pinBusy.push([st - BUF * 60000, st + len * 60000 + BUF * 60000]); q.left = 0; q.parts = 1; placed.add(q.qid);
+      });
+      const free = freeIntervals(day.key, day.from, day.to, pinBusy);
       const freeMin = free.reduce((a, [s, e]) => a + (e - s) / 60000, 0);
       let budget = spec.maxPerDay ? Math.min(spec.maxPerDay, Math.floor(freeMin * .85)) : Infinity;   // leave ~15 % slack for the unexpected
       let workSinceBreak = 0, lastEnd = 0;
@@ -107,6 +114,7 @@
       });
     });
     items.forEach(it => { if(it.kind === "work"){ const q = queue.find(x => x.qid === it.qid); it.parts = q.parts; } });
+    items.sort((a, b) => a.dayKey < b.dayKey ? -1 : a.dayKey > b.dayKey ? 1 : a.start - b.start);
     // a trailing break with nothing after it is just noise
     while(items.length && items[items.length - 1].kind === "break") items.pop();
     for(let i = items.length - 2; i >= 0; i--) if(items[i].kind === "break" && items[i + 1].kind === "break") items.splice(i, 1);
@@ -124,6 +132,27 @@
   function reflow(p){
     const r = schedule(p.spec); p.items = r.items; p.overflow = r.overflow;
     p.fixed = {}; p.spec.days.forEach(d => { p.fixed[d.key] = fixedFor(d.key).filter(f => f.e > atKey(d.key, d.from).getTime() - 1 && f.s < atKey(d.key, d.to).getTime()); });
+    detectConflicts(p);
+  }
+  const rd5 = m => Math.round(m / 5) * 5;
+  function suggestSlot(p, it){                              // the nearest time at/after the wanted one where this activity fits without touching anything else
+    const key = it.dayKey, dur = it.durationMin;
+    const busy = fixedFor(key).map(f => [f.s - BUF * 60000, f.e + BUF * 60000]).concat(p.items.filter(o => o !== it && o.kind === "work" && o.dayKey === key).map(o => [o.start.getTime(), o.end.getTime()]));
+    for(let m = rd5(minOf(it.start)); m + dur <= 23 * 60 + 30; m += 5){
+      const st = atKey(key, m).getTime(), en = st + dur * 60000;
+      if(!busy.some(([a, b]) => a < en && b > st)) return m;
+    }
+    return null;
+  }
+  function detectConflicts(p){
+    p.conflicts = [];
+    p.items.forEach(it => { delete it.conflict; });
+    p.items.filter(i => i.kind === "work" && i.pinned).forEach(it => {
+      const s0 = it.start.getTime(), e0 = it.end.getTime(), hits = [];
+      fixedFor(it.dayKey).forEach(f => { if(f.s < e0 && f.e > s0) hits.push({ title: clean(f.title), s: f.s, e: f.e }); });
+      p.items.forEach(o => { if(o !== it && o.kind === "work" && o.dayKey === it.dayKey && o.start.getTime() < e0 && o.end.getTime() > s0) hits.push({ title: clean(o.title), s: o.start.getTime(), e: o.end.getTime(), plan: true }); });
+      if(hits.length){ it.conflict = hits; p.conflicts.push({ qid: it.qid, title: clean(it.title), dayKey: it.dayKey, hits, suggest: suggestSlot(p, it) }); }
+    });
   }
 
   /* ---------------- building the specific plans ---------------- */
@@ -306,6 +335,144 @@
     paint(p, sh);
     return true;
   }
+
+  /* ---------------- v12: direct editing of the day ---------------- */
+  const reduceMotion = () => document.body.classList.contains("reduce-motion") || (window.matchMedia && window.matchMedia("(prefers-reduced-motion:reduce)").matches);
+  const hhmm = m => fmt(new Date(2000, 0, 1, Math.floor(m / 60), m % 60));
+  function captureRects(body){ const m = {}; body.querySelectorAll("[data-k]").forEach(e => { m[e.dataset.k] = e.getBoundingClientRect().top; }); return m; }
+  function flip(body, before){                                    // rows glide from where they were to where they now are
+    if(reduceMotion()) return;
+    body.querySelectorAll("[data-k]").forEach(e => {
+      const o = before[e.dataset.k]; if(o == null) return;
+      const dy = o - e.getBoundingClientRect().top; if(Math.abs(dy) < 2) return;
+      try{ e.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: 340, easing: "cubic-bezier(.2,.9,.3,1.03)" }); }catch(_){}
+    });
+  }
+  // every edit goes through here: change the plan, re-flow, repaint, glide, and tell the student if something now collides
+  function commit(p, sh, fn){
+    const had = new Set((p.conflicts || []).map(c => c.qid + ":" + c.hits.map(h => h.s).join(",")));
+    const rects = captureRects(sh.body), top = sh.body.scrollTop;
+    fn(); reflow(p); paint(p, sh);
+    sh.body.scrollTop = top; flip(sh.body, rects);
+    const fresh = (p.conflicts || []).filter(c => !had.has(c.qid + ":" + c.hits.map(h => h.s).join(",")));
+    if(fresh.length) notifyConflict(p, sh, fresh[0]);
+    return fresh;
+  }
+  function notifyConflict(p, sh, c){
+    const names = c.hits.slice(0, 2).map(h => h.title).join(" and ");
+    const acts = [];
+    if(c.suggest != null) acts.push({ label: "Move to " + hhmm(c.suggest), primary: true, onClick: () => commit(p, sh, () => { const q = p.spec.queue.find(x => x.qid === c.qid); if(q) q.pin = { key: c.dayKey, min: c.suggest }; }) });
+    acts.push({ label: "Keep it", onClick: () => {} });
+    ui.toast({ title: "Schedule conflict", text: `${c.title} now overlaps ${names}.${c.suggest != null ? " The nearest free time is " + hhmm(c.suggest) + "." : " There is no free slot left today."}`, actions: acts, timeout: 9000 });
+  }
+  function conflictBanner(p, sh){
+    const el = ui.el;
+    return el("div", { class: "dp-conflicts", role: "alert" }, p.conflicts.map(c => el("div", { class: "dp-cf" },
+      el("span", { text: `${c.title} overlaps ${c.hits.slice(0, 2).map(h => h.title).join(" and ")}` }),
+      c.suggest != null ? el("button", { type: "button", class: "dp-btn", text: "Move to " + hhmm(c.suggest), onclick: () => commit(p, sh, () => { const q = p.spec.queue.find(x => x.qid === c.qid); if(q) q.pin = { key: c.dayKey, min: c.suggest }; }) }) : null)));
+  }
+  // put an activity at an exact time (this is what dragging and the clock both do)
+  function placeAt(p, sh, qid, key, minute, said){
+    const q = p.spec.queue.find(x => x.qid === qid); if(!q) return;
+    const today = dk(new Date()), now = minOf(new Date());
+    if(key === today && minute < now){ ui.toast({ title: "That time has passed", text: `It is already ${hhmm(now)}, so I can't schedule ${clean(q.title)} earlier today.`, timeout: 4000 }); commit(p, sh, () => {}); return; }
+    const before = p.items.find(i => i.qid === qid && i.part === 1);
+    if(before && before.dayKey === key && Math.abs(minOf(before.start) - minute) < 1 && !q.pin && !said) { commit(p, sh, () => {}); return; }
+    commit(p, sh, () => { q.pin = { key, min: Math.max(0, Math.min(1439 - 5, minute)) }; });
+    const now2 = p.items.find(i => i.qid === qid && i.part === 1);
+    if(now2) announce(`${clean(q.title)} is at ${fmt(now2.start)}.`);
+  }
+  let liveEl = null;
+  function announce(t){ if(!liveEl){ liveEl = document.createElement("div"); liveEl.className = "sr-only"; liveEl.setAttribute("aria-live", "polite"); liveEl.style.cssText = "position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"; document.body.append(liveEl); } liveEl.textContent = ""; setTimeout(() => { liveEl.textContent = t; }, 30); }
+
+  // press and HOLD the time -> clock
+  function wireHoldTime(btn, p, sh, it){
+    let t = null, sx = 0, sy = 0, held = false;
+    const clear = () => { clearTimeout(t); t = null; btn.classList.remove("holding"); };
+    btn.addEventListener("pointerdown", e => {
+      if(e.button > 0) return; held = false; sx = e.clientX; sy = e.clientY; btn.classList.add("holding");
+      t = setTimeout(() => { held = true; clear(); if(navigator.vibrate) try{ navigator.vibrate(12); }catch(_){}; editTime(p, sh, it); }, 460);
+    });
+    btn.addEventListener("pointermove", e => { if(t && Math.hypot(e.clientX - sx, e.clientY - sy) > 10) clear(); });
+    ["pointerup", "pointercancel", "pointerleave"].forEach(ev => btn.addEventListener(ev, clear));
+    btn.addEventListener("contextmenu", e => e.preventDefault());
+    btn.addEventListener("click", e => { e.preventDefault(); if(held){ held = false; return; } hintOnce(); });
+    btn.addEventListener("keydown", e => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); editTime(p, sh, it); } });   // keyboard: no hold needed
+  }
+  let hinted = false;
+  function hintOnce(){ if(hinted) return; hinted = true; ui.toast({ text: "Press and hold a time to change it.", timeout: 2600 }); }
+  async function editTime(p, sh, it){
+    const q = p.spec.queue.find(x => x.qid === it.qid); if(!q) return;
+    const today = dk(new Date());
+    const v = await D.timePicker.open({ minutes: minOf(it.start), title: clean(it.title), subtitle: `${hm(it.durationMin)} · ${ui.dayLabel(new Date(it.dayKey + "T00:00:00"))}`, step: 5, minMinutes: it.dayKey === today ? minOf(new Date()) : null, allowAuto: !!q.pin });
+    if(v == null) return;
+    if(v === "auto"){ commit(p, sh, () => { q.pin = null; }); announce(`${clean(q.title)} will be placed automatically.`); return; }
+    placeAt(p, sh, it.qid, it.dayKey, v, true);
+  }
+
+  // drag the grip to move an activity
+  function wireGrip(grip, row, group, p, sh, it){
+    let drag = null, raf = 0;
+    const siblings = () => Array.from(group.querySelectorAll(".dp-row")).filter(r => r !== row);
+    function targetFor(y){                                       // which gap is the pointer in? -> start time for the dragged activity
+      const rows = siblings(); let above = null, below = null;
+      for(const r of rows){ const b = r.getBoundingClientRect(); if(y < b.top + b.height / 2){ below = r; break; } above = r; }
+      return { above, below };
+    }
+    function startFor(t, dur){
+      const dayFrom = (p.spec.days.find(d => d.key === it.dayKey) || {}).from || 6 * 60;
+      if(t.above){ const e = +t.above.dataset.e; return rd5(minOf(new Date(e)) + (t.above.classList.contains("fixed") ? BUF : 0)); }
+      if(t.below){ const s0 = minOf(new Date(+t.below.dataset.s)); return Math.max(dayFrom, rd5(s0 - dur)); }
+      return minOf(it.start);
+    }
+    grip.addEventListener("pointerdown", e => {
+      if(e.button > 0) return; e.preventDefault();
+      try{ grip.setPointerCapture(e.pointerId); }catch(_){}
+      const r = row.getBoundingClientRect();
+      drag = { id: e.pointerId, y0: e.clientY, off: 0, vy: 0, ly: e.clientY, lt: performance.now(), h: r.height, moved: false };
+      row.classList.add("dragging"); group.classList.add("dp-dragging");
+      if(navigator.vibrate) try{ navigator.vibrate(8); }catch(_){}
+      loop();
+    });
+    function loop(){                                              // follows the finger, and scrolls the sheet when you reach its edge
+      if(!drag) return;
+      const sb = sh.body.getBoundingClientRect();
+      if(drag.cy != null){ if(drag.cy < sb.top + 56) sh.body.scrollTop -= 9; else if(drag.cy > sb.bottom - 56) sh.body.scrollTop += 9; }
+      row.style.transform = `translate3d(0,${drag.off + (sh.body.scrollTop - (drag.sc0 != null ? drag.sc0 : (drag.sc0 = sh.body.scrollTop)))}px,0) scale(1.02)`;
+      markDrop();
+      raf = requestAnimationFrame(loop);
+    }
+    function markDrop(){
+      group.querySelectorAll(".drop-before,.drop-after").forEach(x => x.classList.remove("drop-before", "drop-after"));
+      if(!drag || drag.cy == null) return;
+      const t = targetFor(drag.cy); if(t.below) t.below.classList.add("drop-before"); else if(t.above) t.above.classList.add("drop-after");
+    }
+    grip.addEventListener("pointermove", e => {
+      if(!drag || e.pointerId !== drag.id) return;
+      const now = performance.now(); drag.vy = (e.clientY - drag.ly) / Math.max(1, now - drag.lt); drag.ly = e.clientY; drag.lt = now;
+      drag.off = e.clientY - drag.y0; drag.cy = e.clientY; if(Math.abs(drag.off) > 4) drag.moved = true;
+    });
+    function end(cancel){
+      if(!drag) return; cancelAnimationFrame(raf);
+      const d = drag; drag = null; row.classList.remove("dragging"); group.classList.remove("dp-dragging");
+      group.querySelectorAll(".drop-before,.drop-after").forEach(x => x.classList.remove("drop-before", "drop-after"));
+      if(cancel || !d.moved){ row.style.transform = ""; return; }
+      const t = targetFor(d.cy), minute = startFor(t, it.durationMin);
+      // a little momentum: the row keeps gliding a few px in the direction it was thrown before it settles into place
+      row.style.transform = "";
+      placeAt(p, sh, it.qid, it.dayKey, minute, false);
+    }
+    grip.addEventListener("pointerup", () => end(false));
+    grip.addEventListener("pointercancel", () => end(true));
+    grip.addEventListener("keydown", e => {                       // keyboard / screen-reader alternative to dragging
+      if(e.key !== "ArrowUp" && e.key !== "ArrowDown") return; e.preventDefault();
+      const works = p.items.filter(i => i.kind === "work" && i.part === 1 && i.dayKey === it.dayKey), i = works.findIndex(x => x.qid === it.qid);
+      if(e.key === "ArrowUp" && i > 0) placeAt(p, sh, it.qid, it.dayKey, minOf(works[i - 1].start), false);
+      if(e.key === "ArrowDown" && i < works.length - 1) placeAt(p, sh, it.qid, it.dayKey, minOf(works[i + 1].end), false);
+      setTimeout(() => { const g = sh.body.querySelector(`.dp-row[data-qid="${it.qid}"] .dp-grip`); if(g) g.focus({ preventScroll: true }); }, 380);
+    });
+  }
+
   function paint(p, sh){
     const body = sh.body; body.textContent = "";
     const works = p.items.filter(i => i.kind === "work"), mins = works.reduce((a, b) => a + b.durationMin, 0);
@@ -314,6 +481,7 @@
       el("div", { class: "dp-sum-main" }, works.length ? `${new Set(works.map(w => w.qid)).size} ${new Set(works.map(w => w.qid)).size === 1 ? "task" : "tasks"} · ${hm(mins)} of focus` : "Nothing fits in this window"),
       works.length ? el("div", { class: "dp-sum-sub" }, `${fmt(works[0].start)} – ${fmt(works[works.length - 1].end)}`) : null));
     if(p.assumptions.length) body.append(el("ul", { class: "dp-assume" }, p.assumptions.map(a => el("li", { text: a }))));
+    if(p.conflicts && p.conflicts.length) body.append(conflictBanner(p, sh));
     const keys = p.spec.days.map(d => d.key);
     keys.forEach(key => {
       const dayItems = p.items.filter(i => i.dayKey === key), fx = p.fixed[key] || [];
@@ -322,21 +490,25 @@
       if(keys.length > 1 || key !== dk(new Date())) group.append(el("h3", { text: ui.dayLabel(new Date(key + "T00:00:00")) }));
       const rows = dayItems.map(i => ({ t: i.start.getTime(), i })).concat(fx.map(f => ({ t: f.s, f }))).sort((a, b) => a.t - b.t);
       rows.forEach(r => {
-        if(r.f){ group.append(el("div", { class: "dp-row fixed" }, el("span", { class: "dp-time", text: fmt(new Date(r.f.s)) }), el("span", { class: "dp-title" }, clean(r.f.title), el("small", { text: " already scheduled" })))); return; }
+        if(r.f){ group.append(el("div", { class: "dp-row fixed", "data-k": "f" + r.f.s, "data-s": String(r.f.s), "data-e": String(r.f.e) }, el("span", { class: "dp-time", text: fmt(new Date(r.f.s)) }), el("span", { class: "dp-title" }, clean(r.f.title), el("small", { text: " already scheduled" })))); return; }
         const it = r.i;
-        if(it.kind === "break"){ group.append(el("div", { class: "dp-row brk" }, el("span", { class: "dp-time", text: fmt(it.start) }), el("span", { class: "dp-title", text: `${it.title} · ${it.durationMin} min` }))); return; }
-        const first = it.part === 1, row = el("div", { class: "dp-row work p-" + (it.priority || "normal") });
-        row.append(el("span", { class: "dp-time", text: fmt(it.start) }),
+        if(it.kind === "break"){ group.append(el("div", { class: "dp-row brk", "data-k": "b" + it.start.getTime(), "data-s": String(it.start.getTime()), "data-e": String(it.end.getTime()) }, el("span", { class: "dp-time", text: fmt(it.start) }), el("span", { class: "dp-title", text: `${it.title} · ${it.durationMin} min` }))); return; }
+        const first = it.part === 1, row = el("div", { class: "dp-row work p-" + (it.priority || "normal") + (it.pinned ? " pinned" : "") + (it.conflict ? " conflict" : ""), "data-k": it.qid + ":" + it.part, "data-qid": it.qid, "data-first": first ? "1" : "0", "data-s": String(it.start.getTime()), "data-e": String(it.end.getTime()) });
+        const q0 = p.spec.queue.find(x => x.qid === it.qid);
+        const grip = first && q0 ? el("button", { type: "button", class: "dp-grip", "aria-label": `Move ${clean(it.title)}. Drag, or use the up and down arrow keys.`, title: "Drag to move", text: "⋮⋮" }) : el("span", { class: "dp-grip ph" });
+        const timeBtn = el("button", { type: "button", class: "dp-time dp-time-btn", "aria-label": `${fmt(it.start)}. Press and hold to change the time.`, title: "Press and hold to change the time" }, fmt(it.start), it.pinned ? el("i", { class: "dp-pin", "aria-hidden": "true" }) : null);
+        row.append(grip, timeBtn,
           el("span", { class: "dp-title" }, (() => { const bb = el("b", { text: it.parts > 1 ? `${clean(it.title)} (${it.part}/${it.parts})` : clean(it.title) }); const qq = p.spec.queue.find(x => x.qid === it.qid); if(first && qq && !qq.taskId){ bb.classList.add("dp-edit"); bb.setAttribute("role", "button"); bb.setAttribute("tabindex", "0"); bb.title = "Tap to rename"; bb.addEventListener("click", ev => { ev.stopPropagation(); const inp = el("input", { type: "text", class: "dp-rename", value: qq.title, "aria-label": "Rename", maxlength: "80" }); const commit = () => { const v = inp.value.trim(); if(v) qq.title = v.slice(0, 80); reflow(p); paint(p, sh); }; inp.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); commit(); } }); inp.addEventListener("blur", commit); bb.replaceWith(inp); inp.focus(); inp.select(); }); } return bb; })(),
-            el("small", { text: ` ${hm(it.durationMin)}${it.why && first ? " · " + it.why : ""}` })));
-        if(first){
-          const q = p.spec.queue.find(x => x.qid === it.qid), idx = p.spec.queue.indexOf(q);
-          const btn = (label, aria, fn, dis) => el("button", { type: "button", class: "dp-btn", "aria-label": aria, disabled: dis ? "" : null, text: label, onclick: ev => { ev.stopPropagation(); fn(); reflow(p); paint(p, sh); } });
+            el("small", { text: ` ${hm(it.durationMin)}${it.why && first ? " · " + it.why : ""}${it.pinned ? " · your time" : ""}` }),
+            it.conflict ? el("small", { class: "dp-warn", text: "Overlaps " + it.conflict.map(c => c.title).slice(0, 2).join(" and ") }) : null));
+        if(first && q0){
+          wireHoldTime(timeBtn, p, sh, it);
+          wireGrip(grip, row, group, p, sh, it);
+          const idx = p.spec.queue.indexOf(q0);
+          const btn = (label, aria, fn, dis) => el("button", { type: "button", class: "dp-btn", "aria-label": aria, disabled: dis ? "" : null, text: label, onclick: ev => { ev.stopPropagation(); commit(p, sh, fn); } });
           row.append(el("span", { class: "dp-ctl" },
-            btn("↑", `Move ${it.title} earlier`, () => { p.spec.queue.splice(idx, 1); p.spec.queue.splice(idx - 1, 0, q); }, idx === 0),
-            btn("↓", `Move ${it.title} later`, () => { p.spec.queue.splice(idx, 1); p.spec.queue.splice(idx + 1, 0, q); }, idx === p.spec.queue.length - 1),
-            btn("−", `Shorten ${it.title} by 15 minutes`, () => { q.durationMin = Math.max(15, q.durationMin - 15); }, q.durationMin <= 15),
-            btn("+", `Lengthen ${it.title} by 15 minutes`, () => { q.durationMin = Math.min(240, q.durationMin + 15); }, q.durationMin >= 240),
+            btn("−", `Shorten ${it.title} by 15 minutes`, () => { q0.durationMin = Math.max(15, q0.durationMin - 15); }, q0.durationMin <= 15),
+            btn("+", `Lengthen ${it.title} by 15 minutes`, () => { q0.durationMin = Math.min(240, q0.durationMin + 15); }, q0.durationMin >= 240),
             btn("✕", `Remove ${it.title} from the plan`, () => { p.spec.queue.splice(idx, 1); })));
         }
         group.append(row);
@@ -732,5 +904,5 @@
     }catch(e){ return ""; }
   }
 
-  D.dayplan = { handle, detect, open: () => open(current), buildPlan: makePlan, schedule, contextLine, hasPending: () => !!pending, inTalk: () => !!talk, current: () => current, _planDay: planDay, _planFree: planFree, _planWeek: planWeek, _planExam: planExam, _parseItems: parseItems, _freeIntervals: freeIntervals };
+  D.dayplan = { handle, detect, open: p => open(p || current), buildPlan: makePlan, schedule, contextLine, hasPending: () => !!pending, inTalk: () => !!talk, current: () => current, _planDay: planDay, _planFree: planFree, _planWeek: planWeek, _planExam: planExam, _parseItems: parseItems, _freeIntervals: freeIntervals };
 })();

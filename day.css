@@ -1,0 +1,106 @@
+/* ============================================================
+   day.css (v12) — two personalities, one DABSy.
+   DAY  "Morning Paper": muted warm ivory, soft sage, desaturated sky, gentle lavender. Calm, airy, low-saturation, no yellow glare.
+   NIGHT "Midnight Study": deep midnight-blue glass, moonlit periwinkle and warm lamp-light. Not an inverted day.
+   Token layer only (loaded after soda.css and banana.css); components keep their own layout.
+   ============================================================ */
+:root[data-theme="light"]{
+  --bg:#ebe7dd; --bg-2:#e2ded2; --panel-solid:#f3f0e8;
+  --ink:#2a2e3a; --ink-dim:rgba(42,46,58,.80); --ink-faint:rgba(42,46,58,.70);
+  --accent:#3f6a8c; --accent-2:#6e64a6; --accent-warm:#85693c; --danger:#a5414d; --ok:#2e6f55;
+  --glass:rgba(250,247,240,.56); --glass-strong:rgba(250,247,240,.82); --glass-border:rgba(104,116,138,.22);
+  --surface-popup:linear-gradient(160deg,rgba(249,246,239,.95),rgba(236,232,222,.95));
+  --surface-toast:linear-gradient(160deg,rgba(249,246,239,.95),rgba(238,234,224,.95));
+  --surface-sheet:linear-gradient(180deg,rgba(248,245,238,.96),rgba(236,232,222,.97));
+  --surface-tour:linear-gradient(160deg,rgba(249,246,239,.96),rgba(236,232,222,.96));
+  --surface-dock:linear-gradient(160deg,rgba(250,247,241,.90),rgba(238,234,224,.90));
+  --backdrop:rgba(44,50,64,.30); --backdrop-soft:rgba(44,50,64,.20);
+  --subtitle-bg:rgba(249,246,239,.80);
+  --shadow-pop:0 22px 54px rgba(54,64,90,.20); --shadow-sheet:0 -12px 40px rgba(54,64,90,.14); --shadow-toast:0 10px 28px rgba(54,64,90,.16);
+  --grad-accent:linear-gradient(135deg,#c9d8e6,#d8d0ea); --on-accent:#222c3b;
+  --opt-bg:#f4f1e9; --mic-bg:rgba(63,106,140,.12); --mic-bg-live:rgba(63,106,140,.26); --docked-bg:rgba(42,46,58,.10);
+  --eco-bubble:radial-gradient(circle at 32% 24%,rgba(255,255,255,.9),rgba(255,255,255,.4) 60%),rgba(201,216,230,.55);
+  --bubble-shadow:rgba(54,64,90,.18); --card-shadow:rgba(54,64,90,.16);
+  --new-bg:rgba(63,106,140,.08); --new-border:rgba(63,106,140,.38);
+  --wd-stage:#e9e5da; --pv-eye:#7aa3c4;
+  --atm-1:rgba(150,184,208,.30); --atm-2:rgba(196,186,226,.28); --atm-3:rgba(176,204,184,.30);
+  --banana:#e4ddc9; --banana-deep:#6c5c3a; --peach:#e9d3c4; --lavender:#d7d0ea; --mint:#cfe0d4;
+  --lg-fill:rgba(250,247,240,.44); --lg-hi:rgba(255,255,255,.72); --lg-lo:rgba(255,255,255,.14); --lg-ring:rgba(255,255,255,.85); --lg-shadow:0 10px 30px rgba(54,64,90,.14); --lg-sheen:.30;
+}
+:root[data-theme="dark"]{
+  --bg:#0b0f22; --bg-2:#10163a; --panel-solid:#151b3c;
+  --ink:#eaeefb; --ink-dim:rgba(234,238,251,.76); --ink-faint:rgba(234,238,251,.54);
+  --accent:#9db9ff; --accent-2:#c6b9ff; --accent-warm:#f1d9a4; --danger:#ff9fae; --ok:#9fe4c4;
+  --glass:rgba(150,170,240,.08); --glass-strong:rgba(150,170,240,.14); --glass-border:rgba(170,190,255,.18);
+  --surface-popup:linear-gradient(160deg,rgba(28,36,76,.88),rgba(14,18,44,.92));
+  --surface-toast:linear-gradient(160deg,rgba(28,36,76,.88),rgba(14,18,44,.93));
+  --surface-sheet:linear-gradient(180deg,rgba(24,31,66,.94),rgba(11,15,36,.97));
+  --surface-tour:linear-gradient(160deg,rgba(30,38,80,.94),rgba(13,17,40,.96));
+  --surface-dock:linear-gradient(160deg,rgba(28,36,76,.80),rgba(12,16,38,.86));
+  --backdrop:rgba(3,5,16,.64); --backdrop-soft:rgba(3,5,16,.52);
+  --subtitle-bg:rgba(12,16,38,.55);
+  --shadow-pop:0 24px 60px rgba(0,0,10,.5); --shadow-sheet:0 -14px 44px rgba(0,0,10,.45);
+  --grad-accent:linear-gradient(135deg,#a9bfff,#cbbcff); --on-accent:#0c1130;
+  --opt-bg:#141a3a; --mic-bg:rgba(157,185,255,.16); --mic-bg-live:rgba(157,185,255,.34);
+  --eco-bubble:radial-gradient(circle at 32% 24%,rgba(220,230,255,.32),rgba(200,215,255,.07) 55%),rgba(48,60,110,.5);
+  --new-bg:rgba(157,185,255,.09); --new-border:rgba(157,185,255,.5);
+  --wd-stage:#080b1b; --pv-eye:#dbe6ff;
+  --atm-1:rgba(130,160,255,.14); --atm-2:rgba(198,185,255,.10); --atm-3:rgba(120,190,200,.07);
+  --lg-fill:rgba(140,160,235,.10); --lg-hi:rgba(210,222,255,.34); --lg-lo:rgba(210,222,255,.05); --lg-ring:rgba(205,218,255,.55); --lg-shadow:0 12px 34px rgba(0,0,12,.38); --lg-sheen:.16;
+}
+
+/* ---- cards that used to be banana-yellow ---- */
+:root[data-theme="light"]{
+  --bm-milk:rgba(243,239,229,.74); --bm-milk-hi:rgba(250,248,242,.86); --bm-milk-lo:rgba(233,228,216,.78); --bm-cream:#f8f5ee;
+  --aoi:rgba(120,142,168,.30); --aoi-strong:#4f7a9c; --aoi-focus:rgba(79,122,156,.30);
+  --bm-ink:#2a2e3a; --bm-ink-2:#4a505f; --bm-ink-3:#5d6373; --bm-link:#3c6688; --bm-ok:#2e6f55; --bm-danger:#a5414d; --bm-warn:#7f6230;
+  --bm-surface:linear-gradient(165deg,rgba(255,255,255,.40),rgba(255,255,255,0) 55%),linear-gradient(180deg,var(--bm-milk),var(--bm-milk-lo));
+  --bm-shadow:0 8px 24px rgba(54,64,90,.12);
+}
+:root[data-theme="dark"]{
+  --bm-milk:rgba(30,38,80,.66); --bm-milk-hi:rgba(48,58,112,.56); --bm-milk-lo:rgba(18,24,56,.72); --bm-cream:#1a2148;
+  --aoi:rgba(160,180,245,.24); --aoi-strong:#8fb0ff; --aoi-focus:rgba(143,176,255,.4);
+  --bm-ink:#e9edfb; --bm-ink-2:rgba(233,237,251,.78); --bm-ink-3:rgba(233,237,251,.62); --bm-link:#a9c3ff; --bm-ok:#9fe4c4; --bm-danger:#ff9fae; --bm-warn:#f1d9a4;
+  --bm-surface:linear-gradient(165deg,rgba(255,255,255,.07),rgba(255,255,255,0) 55%),linear-gradient(180deg,var(--bm-milk),var(--bm-milk-lo));
+  --bm-shadow:0 10px 28px rgba(0,0,12,.4);
+}
+:root[data-theme="dark"] .rcard,:root[data-theme="dark"] .rc-list .rc-row,:root[data-theme="dark"] .nc-item,:root[data-theme="dark"] .plan-b,:root[data-theme="dark"] .sheet .row{
+  --glass:rgba(150,170,240,.10); --glass-strong:var(--bm-milk-hi); --glass-border:rgba(170,190,255,.26); color-scheme:dark;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),var(--bm-shadow);
+}
+:root[data-theme="dark"] .rcard .btn.primary,:root[data-theme="dark"] .rc-list .btn.primary,:root[data-theme="dark"] .nc-item .btn.primary{ color:var(--on-accent); }
+:root[data-theme="light"] .rcard .btn.primary,:root[data-theme="light"] .rc-list .btn.primary,:root[data-theme="light"] .nc-item .btn.primary{ color:var(--on-accent); }
+:root[data-theme="dark"] .plan-b.k-break{ background:linear-gradient(180deg,rgba(40,80,84,.5),rgba(24,52,58,.55)); }
+:root[data-theme="light"] .plan-b.k-break{ background:linear-gradient(180deg,rgba(210,226,214,.8),rgba(196,214,200,.8)); }
+:root[data-theme="light"] .rcard,:root[data-theme="light"] .rc-list .rc-row,:root[data-theme="light"] .nc-item,:root[data-theme="light"] .plan-b,:root[data-theme="light"] .sheet .row{ box-shadow:inset 0 1px 0 rgba(255,255,255,.7),var(--bm-shadow); }
+/* the last hard-coded yellows */
+.dp-main,.wg-done,:root #subtitle button.primary{ background:var(--grad-accent); color:var(--on-accent); border:1px solid transparent; }
+:root[data-theme="light"] .sticker{ background:var(--banana); color:#3d3520; box-shadow:0 2px 0 rgba(60,52,30,.18); }
+:root .rc-list .rc-incl input,:root input[type=checkbox]{ accent-color:var(--accent); }
+
+/* ---- atmosphere: soft, natural light instead of a flat wash ---- */
+:root[data-theme="light"] #atmosphere{
+  background:
+    radial-gradient(62% 42% at 14% 2%,rgba(255,246,222,.85),transparent 68%),
+    radial-gradient(48% 36% at 50% 46%,var(--atm-1),transparent 72%),
+    radial-gradient(52% 40% at 96% 14%,var(--atm-2),transparent 70%),
+    radial-gradient(80% 50% at 40% 108%,var(--atm-3),transparent 72%),
+    linear-gradient(180deg,rgba(255,255,255,.22),transparent 38%);
+}
+:root[data-theme="dark"] #atmosphere{
+  background:
+    radial-gradient(54% 38% at 50% 44%,var(--atm-1),transparent 72%),
+    radial-gradient(60% 44% at 82% 0%,var(--atm-2),transparent 70%),
+    radial-gradient(80% 52% at 20% 108%,var(--atm-3),transparent 72%),
+    radial-gradient(2px 2px at 12% 18%,rgba(220,230,255,.55),transparent 60%),
+    radial-gradient(1.6px 1.6px at 78% 12%,rgba(220,230,255,.5),transparent 60%),
+    radial-gradient(1.4px 1.4px at 64% 30%,rgba(220,230,255,.4),transparent 60%),
+    radial-gradient(1.8px 1.8px at 30% 8%,rgba(220,230,255,.45),transparent 60%),
+    radial-gradient(1.4px 1.4px at 90% 36%,rgba(220,230,255,.35),transparent 60%),
+    radial-gradient(1.6px 1.6px at 8% 40%,rgba(220,230,255,.35),transparent 60%);
+}
+:root[data-theme="light"] #atmosphere::after{ /* a whisper of paper grain; static, so it costs nothing while animating */
+  content:""; position:absolute; inset:0; opacity:.05; pointer-events:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .3  0 0 0 0 .3  0 0 0 0 .35  0 0 0 .9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+body.lite-gfx #atmosphere::after{ display:none }

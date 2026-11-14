@@ -33,6 +33,10 @@
     subtitle.textContent = "";
     const body = document.createElement("div"); body.className = "sub-text"; body.textContent = text;
     subtitle.append(body);
+    if(window.DABSy.math && (window.DABSy.math.hasMath(text) || /\\ce\{/.test(text))){        // v12: formulas are typeset, never shown as raw LaTeX
+      body.textContent = window.DABSy.math.speakable(text);
+      window.DABSy.math.renderInto(body, text).catch(() => {});
+    }
     subtitle.classList.toggle("long", String(text).length > 170);
     subtitle.classList.toggle("has-actions", !!((opts.actions && opts.actions.length) || opts.choices));
     if(opts.choices) subtitle.append(renderChoices(opts.choices));
@@ -93,8 +97,8 @@
     chipList().forEach(([label, cmd]) => {
       chips.append(ui.el("button", { type: "button", onclick: () => {
         if(cmd === "focus") return textInput.focus();
-        if(cmd === "focus-study"){ textInput.value = "I want to study "; textInput.focus(); return; }
-        if(cmd === "focus-task"){ textInput.value = "Remind me to "; textInput.focus(); return; }
+        if(cmd === "focus-study"){ textInput.value = "I want to study "; textInput.dispatchEvent(new Event("input")); textInput.focus(); return; }
+        if(cmd === "focus-task"){ textInput.value = "Remind me to "; textInput.dispatchEvent(new Event("input")); textInput.focus(); return; }
         handleUserUtterance(cmd);
       } }, label));
     });
@@ -118,10 +122,22 @@
   textInput.addEventListener("input", armDockTimer);
   textInput.addEventListener("blur", armDockTimer);
   textInput.addEventListener("focus", () => clearTimeout(dockTimer));
+  /* v12: the input is a growing <textarea>. Desktop: Enter sends, Shift+Enter adds a line. Touch screens: Enter adds a line
+     (long messages stay easy to write) and the Send button, which appears once there is text, sends. */
+  const coarse = window.matchMedia && window.matchMedia("(pointer:coarse)");
+  function submitInput(){
+    const v = textInput.value.trim(); if(!v) return;
+    handleUserUtterance(v); textInput.value = ""; textInput.dispatchEvent(new Event("input"));
+  }
   textInput.addEventListener("keydown", e => {
-    if(e.key === "Enter" && textInput.value.trim()){ handleUserUtterance(textInput.value.trim()); textInput.value = ""; }
+    if(e.key === "Enter" && !e.shiftKey && !e.isComposing && !(coarse && coarse.matches)){ e.preventDefault(); submitInput(); }
     if(e.key === "Escape") closeCommand();
   });
+  const sendBtn = document.getElementById("send-btn");
+  if(sendBtn){
+    sendBtn.addEventListener("pointerdown", e => e.preventDefault());   // keep the keyboard up while sending
+    sendBtn.addEventListener("click", submitInput);
+  }
   bus.on("face:longpress", () => {                       // press and hold the character -> tasks / reminders
     director.dispatch("USER_LONGPRESS");
     closeCommand();
@@ -478,7 +494,8 @@
       const handled = await window.DABSy.session.handleUtterance(text);
       if(handled) return;
     }
-    if(window.DABSy.studyBlock.isActive){
+    // v12: Study Block explains STUDY questions only. Reminders, planning, apps, Study Space and ordinary conversation continue through the normal pipeline below.
+    if(window.DABSy.studyBlock.isActive && window.DABSy.study.classify(text) === "study"){
       memory.addHistory({ type: "chat", user: text, reply: "(routed to Study Block)" });
       if(ai.status() === "limited"){ say(ai.limitedReply(), "CONFUSED"); return; }
       window.DABSy.study.startStudy(text);
@@ -577,7 +594,7 @@
     const lead = "What I understood: ";
     say(lead + p.understood, "CURIOUS", { actions: [
       { label: "Use", primary: true, onClick: () => { skipRefine = true; handleUserUtterance(p.understood); } },
-      { label: "Edit", onClick: () => { textInput.value = p.understood; openCommand(); setTimeout(() => textInput.focus(), 60); } },
+      { label: "Edit", onClick: () => { textInput.value = p.understood; textInput.dispatchEvent(new Event("input")); openCommand(); setTimeout(() => textInput.focus(), 60); } },
       { label: "Change", onClick: () => { textInput.value = ""; openCommand(); setTimeout(() => textInput.focus(), 60); } },
     ] });
     return true;

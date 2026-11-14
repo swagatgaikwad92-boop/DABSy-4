@@ -75,6 +75,7 @@
         minutes: goal.minutes, title: "Recommended for " + (name || "you"),
         intro: found.ranked === "ai" ? `Here's what I found for ${name || "your topic"}, checked against your ${goal.minutes}-minute limit.` : `Here's what I found for ${name || "your topic"}.`,
         note: found.note,
+        refine: prefs => D.research.find(goal, { prefs }),      // v12: "I want visual explanations, avoid long PDFs" -> a fresh, honest search
       });
       if(!picked){ say("Okay. Ask me again whenever you want to plan.", "IDLE"); return; }
       D.research.remember(picked.chosen, goal);

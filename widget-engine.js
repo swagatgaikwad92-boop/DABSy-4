@@ -19,9 +19,8 @@
 (function(){
   "use strict";
   const D = window.DABSy, bus = D.bus, ui = D.ui, memory = D.memory, el = ui.el;
-  const KEY = "widgets_v1", WKEY = "weather_cache_v1";
+  const KEY = "widgets_v1", KEY3 = "widgets_v3", WKEY = "weather_cache_v1";
   const stage = document.getElementById("stage");
-  const SLOTS = 6;                                          // 0..3 upper rows (always), 4..5 third row (only when the screen is tall enough)
   const DEFS = {
     clock:    { name: "Clock",    ico: "🕐" },
     date:     { name: "Date",     ico: "📅" },
@@ -30,36 +29,40 @@
     calendar: { name: "Calendar", ico: "🗓️" },
   };
   const ORDER = ["clock", "date", "tasks", "weather", "calendar"];
+  /* v12 colour presets: every one is defined for day AND night in widgets2.css (data-tone). "glass" follows the theme. */
+  const TONES = [
+    { id: "glass", name: "Glass", sw: ["#cfd6e6", "#27304f"] }, { id: "mist", name: "Mist", sw: ["#cdd9e4", "#6f8aa3"] },
+    { id: "sage", name: "Sage", sw: ["#d3dccd", "#7d9783"] }, { id: "lavender", name: "Lavender", sw: ["#dcd6ea", "#9187b5"] },
+    { id: "sand", name: "Sand", sw: ["#ece3d3", "#b49e7c"] }, { id: "rose", name: "Rose", sw: ["#ecd7d6", "#b98488"] },
+    { id: "midnight", name: "Midnight", sw: ["#2b3560", "#141a38"] },
+  ];
+  const SMIN = 0.75, SMAX = 1.6;
   const connected = () => { try{ const c = window.DABSyCore && window.DABSyCore.getConnections().calendar; return !!(c && c.enabled); }catch(e){ return false; } };
 
-  /* ---------------- persisted state ---------------- */
-  let st = memory.read(KEY, null);
-  /* v11.2: nothing is on until the student chooses it. An arrangement saved by v11.1 was auto-filled, not chosen: start clean once. */
-  function defaults(){ return { v: 2, on: true, items: [] }; }
-  if(!st || !Array.isArray(st.items) || st.v !== 2){ const loc0 = st && st.loc; st = defaults(); if(loc0) st.loc = loc0; try{ memory.write(KEY, st); }catch(e){} }
-  st.items = st.items.filter(i => DEFS[i.id] && Number.isInteger(i.slot) && i.slot >= 0 && i.slot < SLOTS);
-  const save = () => { try{ memory.write(KEY, st); }catch(e){} };
+  /* ---------------- persisted state ----------------
+     v3: every widget has its own free position (x, y = fraction of the screen), a size (s) and a colour (c: a preset id or #rrggbb).
+     A v2 arrangement (slots) is converted once, keeping which widgets were on. */
+  const SLOT_XY = [[.045, .115], [.54, .115], [.045, .255], [.54, .255], [.045, .395], [.54, .395]];
+  let st = memory.read(KEY3, null);
+  if(!st || st.v !== 3 || !Array.isArray(st.items)){
+    const old = memory.read(KEY, null);
+    st = { v: 3, on: old && typeof old.on === "boolean" ? old.on : true, items: [] };
+    if(old && old.loc) st.loc = old.loc;
+    if(old && Array.isArray(old.items)) old.items.filter(i => DEFS[i.id] && Number.isInteger(i.slot) && i.slot >= 0 && i.slot < SLOT_XY.length)
+      .forEach(i => st.items.push({ id: i.id, x: SLOT_XY[i.slot][0], y: SLOT_XY[i.slot][1], s: 1, c: "glass" }));
+    try{ memory.write(KEY3, st); }catch(e){}
+  }
+  st.items = st.items.filter(i => DEFS[i.id]).map(i => ({ id: i.id, x: isFinite(i.x) ? i.x : .05, y: isFinite(i.y) ? i.y : .12, s: Math.max(SMIN, Math.min(SMAX, +i.s || 1)), c: i.c || "glass" }));
+  const save = () => { try{ memory.write(KEY3, st); }catch(e){} };
 
   /* ---------------- DOM ---------------- */
   const root = el("div", { id: "widgets", "aria-label": "Widgets", role: "group" });
-  const slotEls = [];
-  for(let i = 0; i < SLOTS; i++){ const s = el("div", { class: "wg-slot s" + i + (i >= 4 ? " r2" : ""), "data-slot": String(i) }); slotEls.push(s); root.append(s); }
   const bar = el("div", { id: "wg-bar", hidden: "", role: "toolbar", "aria-label": "Customise widgets" });
   const btn = el("button", { id: "wg-btn", type: "button", class: "icon-btn glass", "aria-label": "Widgets: choose what floats around DABSy", "aria-expanded": "false", html: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><path d="M17 14v6M14 17h6"/></svg>' });
   const panel = el("div", { id: "wg-panel", hidden: "", role: "dialog", "aria-label": "Choose widgets" });
   stage.append(root, bar, btn, panel);
-  const cards = {};                                          // id -> { card, body }
+  const cards = {};                                          // id -> { item, card, body }
   let editing = false, introduced = false;
-  const tall = () => window.matchMedia("(min-height: 720px)").matches;
-  const allowed = slot => slot < 4 || tall();
-
-  /* the slot a widget is actually shown in (a saved third-row slot falls back to a free upper one on short screens; never persisted) */
-  function effectiveSlots(){
-    const used = new Set(), out = {};
-    st.items.forEach(i => { if(allowed(i.slot) && !used.has(i.slot)){ out[i.id] = i.slot; used.add(i.slot); } });
-    st.items.forEach(i => { if(out[i.id] != null) return; for(let s = 0; s < SLOTS; s++){ if(allowed(s) && !used.has(s)){ out[i.id] = s; used.add(s); break; } } });
-    return out;
-  }
 
   /* ---------------- renderers (pure: they read real data) ---------------- */
   const t12 = d => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -154,10 +157,13 @@
     if(cards[id]) return cards[id];
     const body = el("div", { class: "wg-body" });
     const x = el("button", { type: "button", class: "wg-x-btn", "aria-label": "Remove " + DEFS[id].name + " widget", text: "✕", onclick: ev => { ev.stopPropagation(); remove(id); } });
-    const card = el("div", { class: "wg-card wg-" + id, "data-id": id, tabindex: "-1" }, x, body);
-    card.addEventListener("click", () => onTap(id));
-    wireDrag(card, id);
-    cards[id] = { card, body };
+    const grow = el("div", { class: "wg-grow", role: "slider", "aria-label": DEFS[id].name + " size", "aria-valuemin": "75", "aria-valuemax": "160", tabindex: "-1" });
+    const card = el("div", { class: "wg-card wg-" + id, "data-id": id }, x, body);
+    const item = el("div", { class: "wg-item", "data-id": id, tabindex: "-1" }, card, grow);
+    item.addEventListener("click", ev => { if(ev.target.closest(".wg-x-btn,.wg-grow")) return; onTap(id); });
+    wireDrag(item, card, id); wireResize(grow, item, id);
+    root.append(item);
+    cards[id] = { item, card, body, grow };
     return cards[id];
   }
   function paint(id){
@@ -170,18 +176,43 @@
     else if(id === "weather"){ if(!loc() || weather.state === "denied" || weather.state === "fail") askLocation(); else fetchWeather(true).then(() => paint("weather")); }
     else if(id === "calendar"){ if(!connected()) D.ecosystem && D.ecosystem.open(); }
   }
-  function layout(first){
-    const eff = effectiveSlots(), ids = new Set(st.items.map(i => i.id));
-    Object.keys(cards).forEach(id => { if(!ids.has(id)){ cards[id].card.remove(); delete cards[id]; } });
-    st.items.forEach(i => {
-      const c = ensureCard(i.id), slot = slotEls[eff[i.id]]; if(!slot) return;
-      if(c.card.parentNode !== slot) slot.append(c.card);
-      paint(i.id);
-    });
+  /* ---- geometry: positions are fractions of the screen; sizes are a scale applied from the card's top-left corner ---- */
+  const MARGIN = 8;
+  let safeT = null;
+  function safeTop(){ if(safeT == null){ const p = el("div", { style: "position:absolute;visibility:hidden;padding-top:env(safe-area-inset-top,0px)" }); stage.append(p); safeT = parseFloat(getComputedStyle(p).paddingTop) || 0; p.remove(); } return safeT; }
+  function box(item, scale){ return { w: item.offsetWidth * scale, h: item.offsetHeight * scale }; }
+  function clampXY(item, x, y, scale){
+    const R = root.getBoundingClientRect(), b = box(item, scale), top = safeTop() + 62;
+    const maxX = Math.max(MARGIN, R.width - b.w - MARGIN), maxY = Math.max(top, R.height - b.h - MARGIN - 70);
+    return { x: Math.max(MARGIN, Math.min(maxX, x)), y: Math.max(top, Math.min(maxY, y)) };
+  }
+  function applyItem(it, c, animate){
+    const R = root.getBoundingClientRect(); if(!R.width) return;
+    const p = clampXY(c.item, it.x * R.width, it.y * R.height, it.s);
+    it.x = p.x / R.width; it.y = p.y / R.height;
+    c.item.style.left = (it.x * 100).toFixed(3) + "%"; c.item.style.top = (it.y * 100).toFixed(3) + "%";
+    c.item.style.setProperty("--s", String(it.s));
+    c.card.dataset.tone = /^#/.test(it.c) ? "custom" : it.c; tintCustom(c.card, it.c);
+    c.grow.setAttribute("aria-valuenow", String(Math.round(it.s * 100)));
+  }
+  function hexToRgb(h){ const m = /^#?([0-9a-f]{6})$/i.exec(h || ""); if(!m) return null; const n = parseInt(m[1], 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+  function tintCustom(card, c){
+    ["--wg-bg", "--wg-ink", "--wg-dim", "--wg-edge", "--wg-glow"].forEach(k => card.style.removeProperty(k));
+    const rgb = /^#/.test(c) ? hexToRgb(c) : null; if(!rgb) return;
+    const L = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255, dark = L < .52, [r, g, b] = rgb;
+    card.style.setProperty("--wg-bg", `rgba(${r},${g},${b},${dark ? .62 : .58})`);
+    card.style.setProperty("--wg-ink", dark ? "#f3f5ff" : "#232736"); card.style.setProperty("--wg-dim", dark ? "rgba(235,240,255,.76)" : "rgba(35,39,54,.72)");
+    card.style.setProperty("--wg-edge", dark ? "rgba(255,255,255,.22)" : "rgba(255,255,255,.6)"); card.style.setProperty("--wg-glow", `rgba(${r},${g},${b},.28)`);
+  }
+  function layout(){
+    const ids = new Set(st.items.map(i => i.id));
+    Object.keys(cards).forEach(id => { if(!ids.has(id)){ cards[id].item.remove(); delete cards[id]; } });
+    st.items.forEach(i => { const c = ensureCard(i.id); paint(i.id); applyItem(i, c); });
     root.dataset.count = String(st.items.length);
     if(introduced) Object.keys(cards).forEach(id => cards[id].card.classList.add("in"));
     if(editing) paintBar();
   }
+  let rzT = 0; window.addEventListener("resize", () => { clearTimeout(rzT); rzT = setTimeout(() => { if(st.on) st.items.forEach(i => cards[i.id] && applyItem(i, cards[i.id])); }, 120); }, { passive: true });
   function refresh(){ if(!st.on) return; Object.keys(cards).forEach(paint); }
 
   /* ---------------- gradual introduction ---------------- */
@@ -195,13 +226,14 @@
   function paintBar(){
     bar.textContent = "";
     const hidden = ORDER.filter(id => !st.items.some(i => i.id === id));
-    bar.append(el("div", { class: "wg-bar-t", text: "Drag to rearrange" }));
+    bar.append(el("div", { class: "wg-bar-t", text: "Drag a widget anywhere · pull its corner to resize · tap the dot for colour" }));
     const row = el("div", { class: "wg-bar-row" });
     hidden.forEach(id => row.append(el("button", { type: "button", class: "wg-chip", "aria-label": "Add " + DEFS[id].name + " widget", onclick: () => add(id) }, "＋ " + DEFS[id].name)));
     if(!hidden.length) row.append(el("span", { class: "wg-bar-s", text: "All widgets are on screen" }));
     bar.append(row, el("button", { type: "button", class: "wg-done", text: "Done", onclick: done }));
   }
   function edit(){
+    closeTools();
     if(!st.on){ st.on = true; save(); applyOn(); }
     if(editing) return; editing = true;
     root.classList.add("editing"); document.body.classList.add("wg-editing");
@@ -213,61 +245,125 @@
     root.classList.remove("editing"); document.body.classList.remove("wg-editing"); bar.hidden = true; save();
     ui.announce("Widgets saved.");
   }
+  function freeSpot(){                                          // the first of a few tidy positions that doesn't sit on another widget
+    const R = root.getBoundingClientRect(), W = R.width || 390, H = R.height || 800;
+    const cand = [[.045, .115], [.54, .115], [.045, .255], [.54, .255], [.045, .395], [.54, .395], [.3, .52]];
+    const rects = st.items.map(i => { const c = cards[i.id]; return c ? { x: i.x * W, y: i.y * H, w: c.item.offsetWidth * i.s, h: c.item.offsetHeight * i.s } : { x: i.x * W, y: i.y * H, w: 172, h: 96 }; });
+    for(const [cx, cy] of cand){ const x = cx * W, y = cy * H; if(!rects.some(r => x < r.x + r.w + 6 && x + 172 > r.x - 6 && y < r.y + r.h + 6 && y + 96 > r.y - 6)) return { x: cx, y: cy }; }
+    return { x: .3, y: .5 };
+  }
   function add(id){
     if(!DEFS[id] || st.items.some(i => i.id === id)) return false;
-    const used = new Set(effectiveSlots() && Object.values(effectiveSlots())); let slot = -1;
-    for(let s = 0; s < SLOTS; s++){ if(allowed(s) && !used.has(s)){ slot = s; break; } }
-    if(slot < 0){ ui.toast && ui.toast({ text: "There's no free spot. Remove a widget first." }); return false; }
-    st.items.push({ id, slot }); save(); layout(); if(id === "weather" && !loc()) { /* wait for the user's tap: no surprise permission prompt */ }
+    const p = freeSpot(); st.items.push({ id, x: p.x, y: p.y, s: 1, c: "glass" }); save(); layout();
     if(introduced) setTimeout(() => cards[id] && cards[id].card.classList.add("in"), 30);
     return true;
   }
   function remove(id){
     const i = st.items.findIndex(x => x.id === id); if(i < 0) return false;
-    st.items.splice(i, 1); save(); layout(); return true;
+    closeTools(); st.items.splice(i, 1); save(); layout(); return true;
   }
 
-  /* drag a card to another slot (swap if occupied); long-press anywhere on a card enters customise mode */
+  /* ---------------- dragging (anywhere), momentum, settle ----------------
+     Press and drag any widget: it follows the finger, keeps a little momentum when released and settles with a small spring.
+     A short tap still does what the widget does; a press-and-hold opens its colour/size tools. Nothing here changes what a widget shows. */
   let dragMoved = false;
-  function wireDrag(card, id){
-    let sx = 0, sy = 0, down = false, dragging = false, pressT = 0, pid = null;
-    card.addEventListener("pointerdown", e => {
-      if(e.target.closest(".wg-x-btn")) return;
-      down = true; dragging = false; dragMoved = false; sx = e.clientX; sy = e.clientY; pid = e.pointerId;
-      clearTimeout(pressT);
-      if(!editing) pressT = setTimeout(() => { if(down && !dragging){ edit(); dragMoved = true; } }, 650);
+  const noMotion = () => ui.reducedMotion && ui.reducedMotion();
+  function wireDrag(item, card, id){
+    let sx = 0, sy = 0, ox = 0, oy = 0, down = false, dragging = false, pressT = 0, pid = null, samples = [], raf = 0, tx = 0, ty = 0;
+    const it = () => st.items.find(i => i.id === id);
+    item.addEventListener("pointerdown", e => {
+      if(e.target.closest(".wg-x-btn,.wg-grow,.wg-tools")) return;
+      const m = it(); if(!m) return;
+      try{ item.setPointerCapture(e.pointerId); }catch(_){}                      // a mouse (or a fast finger) must not lose the card when it leaves it
+      cancelAnimationFrame(raf); down = true; dragging = false; dragMoved = false; sx = e.clientX; sy = e.clientY; pid = e.pointerId; samples = [{ t: performance.now(), x: e.clientX, y: e.clientY }];
+      const R = root.getBoundingClientRect(); ox = m.x * R.width; oy = m.y * R.height; tx = ty = 0;
+      clearTimeout(pressT); pressT = setTimeout(() => { if(down && !dragging){ dragMoved = true; ui.vibrate && ui.vibrate(12); openTools(id); } }, 620);
+      item.classList.add("pressed");
     });
-    card.addEventListener("pointermove", e => {
+    item.addEventListener("pointermove", e => {
       if(!down || e.pointerId !== pid) return;
       const dx = e.clientX - sx, dy = e.clientY - sy;
-      if(!editing){ if(Math.hypot(dx, dy) > 10) clearTimeout(pressT); return; }
-      if(!dragging && Math.hypot(dx, dy) > 6){ dragging = true; dragMoved = true; try{ card.setPointerCapture(pid); }catch(_){} card.classList.add("dragging"); }
-      if(dragging){ card.style.transform = `translate3d(${dx}px,${dy}px,0) scale(1.04)`; e.preventDefault(); }
+      if(!dragging){ if(Math.hypot(dx, dy) < 8) return; dragging = true; dragMoved = true; clearTimeout(pressT); closeTools(); try{ item.setPointerCapture(pid); }catch(_){} item.classList.add("dragging"); }
+      const m = it(), p = clampXY(item, ox + dx, oy + dy, m.s); tx = p.x - ox; ty = p.y - oy;
+      item.style.transform = `translate3d(${tx}px,${ty}px,0) scale(${m.s * 1.045})`;
+      const now = performance.now(); samples.push({ t: now, x: e.clientX, y: e.clientY }); while(samples.length > 2 && now - samples[0].t > 110) samples.shift();
+      e.preventDefault();
     }, { passive: false });
+    function commitAt(px, py){
+      const m = it(), R = root.getBoundingClientRect(), p = clampXY(item, px, py, m.s);
+      m.x = p.x / R.width; m.y = p.y / R.height; save();
+      item.style.transition = "none"; item.style.transform = ""; item.style.left = (m.x * 100).toFixed(3) + "%"; item.style.top = (m.y * 100).toFixed(3) + "%"; void item.offsetWidth; item.style.transition = "";
+    }
+    function settle(){
+      item.classList.remove("dragging", "pressed");
+      if(noMotion()) return;
+      try{ item.animate([{ scale: "1.045" }, { scale: ".992", offset: .55 }, { scale: "1" }], { duration: 420, easing: "cubic-bezier(.25,.9,.3,1)" }); }catch(_){}
+    }
     const end = e => {
       if(e && e.pointerId !== pid) return;
-      clearTimeout(pressT);
+      clearTimeout(pressT); item.classList.remove("pressed");
       if(down && dragging){
-        const r = card.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-        let best = -1, bd = 1e9;
-        slotEls.forEach((s, n) => { if(!allowed(n)) return; const q = s.getBoundingClientRect(), d = Math.hypot(cx - (q.left + q.width / 2), cy - (q.top + q.height / 2)); if(d < bd){ bd = d; best = n; } });
-        const eff = effectiveSlots(), from = eff[id];
-        if(best >= 0 && best !== from){
-          const other = st.items.find(i => eff[i.id] === best), me = st.items.find(i => i.id === id);
-          if(other) other.slot = from; me.slot = best;
-          // positions that were only "effective" (short screen) become real now, so a saved layout never has two widgets in one slot
-          st.items.forEach(i => { if(i !== me && i !== other) i.slot = eff[i.id]; });
-          save();
+        const m = it(), n = performance.now(), a = samples[0], z = samples[samples.length - 1];
+        let vx = 0, vy = 0;                                      // px per ms, from the last 100 ms only: holding still before letting go means no fling
+        const recent = samples.filter(q => n - q.t <= 100);
+        if(recent.length >= 2){ const f = recent[0], l = recent[recent.length - 1]; if(l.t - f.t > 8){ vx = (l.x - f.x) / (l.t - f.t); vy = (l.y - f.y) / (l.t - f.t); } }
+        const sp = Math.hypot(vx, vy);
+        if(noMotion() || sp < .15){ commitAt(ox + tx, oy + ty); settle(); }
+        else{                                                    // a short glide that eases to a stop, stopping at the edges
+          let x = ox + tx, y = oy + ty, last = n, v = [Math.min(2.2, Math.max(-2.2, vx)), Math.min(2.2, Math.max(-2.2, vy))];
+          const step = t => {
+            const dt = Math.min(32, t - last); last = t;
+            x += v[0] * dt; y += v[1] * dt; const c = clampXY(item, x, y, m.s);
+            if(c.x !== x){ v[0] = 0; x = c.x; } if(c.y !== y){ v[1] = 0; y = c.y; }
+            const f = Math.pow(.0016, dt / 1000);                // ~ 0.0016 of the speed left after a second: a quick, soft stop
+            v[0] *= f; v[1] *= f;
+            item.style.transform = `translate3d(${x - ox}px,${y - oy}px,0) scale(${m.s * 1.03})`;
+            if(Math.hypot(v[0], v[1]) > .02 && t - n < 520) raf = requestAnimationFrame(step); else { commitAt(x, y); settle(); }
+          };
+          raf = requestAnimationFrame(step);
         }
-        card.classList.remove("dragging"); card.style.transform = "";
-        layout();
-      }
+      }else if(down){ item.classList.remove("dragging"); }
       down = false; dragging = false; pid = null;
       setTimeout(() => { dragMoved = false; }, 60);
     };
-    card.addEventListener("pointerup", end); card.addEventListener("pointercancel", end);
-    card.addEventListener("contextmenu", e => e.preventDefault());
+    item.addEventListener("pointerup", end); item.addEventListener("pointercancel", end);
+    item.addEventListener("contextmenu", e => e.preventDefault());
   }
+  function wireResize(handle, item, id){
+    let down = false, sx = 0, s0 = 1, w0 = 1, pid = null;
+    handle.addEventListener("pointerdown", e => { const m = st.items.find(i => i.id === id); if(!m) return; down = true; pid = e.pointerId; sx = e.clientX; s0 = m.s; w0 = Math.max(60, item.offsetWidth); try{ handle.setPointerCapture(pid); }catch(_){} e.stopPropagation(); e.preventDefault(); item.classList.add("resizing"); });
+    handle.addEventListener("pointermove", e => { if(!down || e.pointerId !== pid) return; const m = st.items.find(i => i.id === id); setScale(m, s0 + (e.clientX - sx) / w0); e.preventDefault(); });
+    const end = e => { if(!down) return; down = false; item.classList.remove("resizing"); save(); };
+    handle.addEventListener("pointerup", end); handle.addEventListener("pointercancel", end);
+    handle.addEventListener("keydown", e => { const m = st.items.find(i => i.id === id); if(e.key === "ArrowRight" || e.key === "ArrowUp"){ setScale(m, m.s + .05); save(); e.preventDefault(); } if(e.key === "ArrowLeft" || e.key === "ArrowDown"){ setScale(m, m.s - .05); save(); e.preventDefault(); } });
+  }
+  function setScale(m, v){ m.s = Math.max(SMIN, Math.min(SMAX, Math.round(v * 100) / 100)); const c = cards[m.id]; if(c) applyItem(m, c); }
+
+  /* ---------------- per-widget tools: colour + size + remove (opened by press-and-hold) ---------------- */
+  let toolsEl = null, toolsFor = null;
+  function closeTools(){ if(toolsEl){ toolsEl.remove(); toolsEl = null; toolsFor = null; } }
+  function openTools(id){
+    closeTools(); const m = st.items.find(i => i.id === id), c = cards[id]; if(!m || !c) return;
+    toolsFor = id;
+    const sw = TONES.map(t => el("button", { type: "button", class: "wg-sw" + (m.c === t.id ? " on" : ""), "data-tone": t.id, "aria-label": t.name + " colour", title: t.name, style: `--a:${t.sw[0]};--b:${t.sw[1]}`, onclick: () => { m.c = t.id; save(); applyItem(m, c); openTools(id); } }));
+    const pick = el("input", { type: "color", class: "wg-pick", "aria-label": "Custom colour", value: /^#/.test(m.c) ? m.c : "#8aa3c4" });
+    pick.addEventListener("input", () => { m.c = pick.value; applyItem(m, c); }); pick.addEventListener("change", () => { save(); openTools(id); });
+    const custom = el("label", { class: "wg-sw custom" + (/^#/.test(m.c) ? " on" : ""), title: "Custom colour" }, pick, el("i", { "aria-hidden": "true", text: "+" }));
+    toolsEl = el("div", { class: "wg-tools glass-live", role: "dialog", "aria-label": DEFS[id].name + " widget options" },
+      el("div", { class: "wg-tools-t", text: DEFS[id].name }), el("div", { class: "wg-tools-row" }, sw, custom),
+      el("div", { class: "wg-tools-row" },
+        el("button", { type: "button", class: "wg-tb", "aria-label": "Smaller", text: "−", onclick: () => { setScale(m, m.s - .1); save(); } }),
+        el("span", { class: "wg-tl", text: "Size" }),
+        el("button", { type: "button", class: "wg-tb", "aria-label": "Larger", text: "+", onclick: () => { setScale(m, m.s + .1); save(); } }),
+        el("button", { type: "button", class: "wg-tb rm", "aria-label": "Remove widget", text: "Remove", onclick: () => remove(id) })));
+    root.append(toolsEl);
+    const R = root.getBoundingClientRect(), r = c.item.getBoundingClientRect(), tw = toolsEl.offsetWidth, th = toolsEl.offsetHeight;
+    let left = r.left - R.left + r.width / 2 - tw / 2, top = r.bottom - R.top + 10;
+    if(top + th > R.height - 8) top = r.top - R.top - th - 10;
+    toolsEl.style.left = Math.max(8, Math.min(R.width - tw - 8, left)) + "px"; toolsEl.style.top = Math.max(8, top) + "px";
+    requestAnimationFrame(() => toolsEl && toolsEl.classList.add("in"));
+  }
+  document.addEventListener("pointerdown", e => { if(toolsEl && !toolsEl.contains(e.target) && !(cards[toolsFor] && cards[toolsFor].item.contains(e.target))) closeTools(); }, true);
 
   /* ---------------- on/off + lifecycle ---------------- */
   function applyOn(){ root.hidden = !st.on; if(st.on){ layout(); if(introduced) refresh(); else if(!document.body.classList.contains("booting")) setTimeout(introduce, 1200); } }
@@ -308,7 +404,7 @@
 
   D.widgets = {
     openChooser: openPanel, edit, done, isEditing: () => editing, add, remove, enable, enabled: () => st.on, refresh, askLocation,
-    list: () => st.items.map(i => ({ id: i.id, slot: i.slot })), available: () => ORDER.filter(id => !st.items.some(i => i.id === id)), names: () => Object.assign({}, ...ORDER.map(id => ({ [id]: DEFS[id].name }))),
-    reset(){ st = defaults(); save(); layout(); },
+    list: () => st.items.map((i, n) => ({ id: i.id, slot: n, x: i.x, y: i.y, size: i.s, color: i.c })), setColor: (id, c) => { const m = st.items.find(i => i.id === id); if(!m) return false; m.c = c; save(); layout(); return true; }, setSize: (id, v) => { const m = st.items.find(i => i.id === id); if(!m) return false; setScale(m, v); save(); return true; }, moveTo: (id, x, y) => { const m = st.items.find(i => i.id === id); if(!m) return false; m.x = x; m.y = y; save(); layout(); return true; }, tones: () => TONES.map(t => t.id), available: () => ORDER.filter(id => !st.items.some(i => i.id === id)), names: () => Object.assign({}, ...ORDER.map(id => ({ [id]: DEFS[id].name }))),
+    reset(){ st = { v: 3, on: true, items: [], loc: st.loc }; save(); layout(); },
   };
 })();
