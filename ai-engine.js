@@ -108,13 +108,13 @@
   // whose text is the failure ("Gemini request failed"). None of those may be shown as if DABSy had said it.
   const FAIL_TEXT = /^\s*(gemini|google|openai|anthropic|claude|the ai|ai|request|api|upstream|server)\b[^\n]{0,60}\b(fail(ed|ure)?|error|unavailable|timed? ?out|quota|overloaded|exceeded)\b/i;
   const isTransient = e => e === "network" || e === "timeout" || e === "provider" || /^(http-5\d\d|provider-5\d\d|http-429)$/.test(e || "");
-  async function postMessage(message){
+  async function postMessage(message, image){
     const base = cfg().proxyUrl.replace(/\/+$/, "");
     if(!base) return { ok: false, error: "no-proxy" };
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), cfg().requestTimeoutMs || 25000);
     try{
-      const res = await fetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }), signal: ctl.signal });
+      const res = await fetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(image ? { message, image: { mimeType: image.mime || "image/jpeg", data: image.data } } : { message }), signal: ctl.signal });
       let data = null; try{ data = await res.json(); }catch(_){}
       if(res.status === 429){ setState("ready", "Taking a short breather — busy right now."); return { ok: false, error: "rate-limited" }; }
       if(!res.ok){ setState("checking", "The last request failed. I'll retry on your next message."); return { ok: false, error: data && data.error ? "provider" : "http-" + res.status }; }
@@ -152,6 +152,23 @@
     }
     const r = await post("/v1/generate", { task: o.task || "chat", system: o.bare ? bareSystem(o.system) : personaSystem(o.system), prompt: o.prompt, json: !!o.json, image: o.image || undefined });
     return r;
+  }
+  /* v12.1 (Doodle Space): look at ONE picture the person chose to send.
+     - proxy mode:   POST /v1/generate with {image} (the original backend supports this).
+     - message mode: the deployed dabsy-brain takes {message} only. Sending a picture needs a Worker that also accepts
+       {message, image:{mimeType,data}} and forwards it to a vision model; set ai.imageInMessage = true once it does (docs/DOODLE_SPACE.md).
+       Until then this returns error "no-image" — it never pretends to have seen the picture. */
+  async function vision(o){
+    o = o || {};
+    if(!cfg().proxyUrl) return { ok: false, error: "no-proxy" };
+    if(!o.image) return { ok: false, error: "no-image" };
+    if(!navigator.onLine) return { ok: false, error: "offline" };
+    if(cfg().mode === "message"){
+      if(!cfg().imageInMessage) return { ok: false, error: "no-image" };
+      const sys = (o.bare === false ? personaSystem(o.system) : bareSystem(o.system));
+      return withRetry(() => postMessage(sys + "\n\n" + (o.prompt || ""), { mime: o.mime, data: o.image }));
+    }
+    return withRetry(() => post("/v1/generate", { task: o.task || "vision", system: o.bare === false ? personaSystem(o.system) : bareSystem(o.system), prompt: o.prompt, json: !!o.json, image: o.image }));
   }
   function stripFences(raw){ return String(raw || "").trim().replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim(); }
   function tryJSON(raw){
@@ -531,7 +548,7 @@
 
   window.DABSy.ai = {
     status: () => state, statusInfo, check, generate, askJSON, research, localParse, parseGoal, parseIntent,
-    askConflictQuestion, resolveConflictIntent, askDABSy, study, isConfused, errorLine, chat, expand, refine, isPlainChat, detectLang, explicitLang, resolveLang, setSessionLang, FAIL_TEXT, limitedReply, parseTimeOfDay, parseDuration, parseDayOffset, subjectOf,
+    askConflictQuestion, resolveConflictIntent, askDABSy, vision, study, isConfused, errorLine, chat, expand, refine, isPlainChat, detectLang, explicitLang, resolveLang, setSessionLang, FAIL_TEXT, limitedReply, parseTimeOfDay, parseDuration, parseDayOffset, subjectOf,
     get canSearch(){ return state !== "limited" && caps.search; },
   };
   window.addEventListener("load", () => setTimeout(check, 1500));

@@ -12,31 +12,7 @@
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const LABEL = { listening: "Listening", thinking: "Thinking", speaking: "Speaking" };
   let mic, sizeBtn, stage, char, log, micOn = false;
-  let on = false, state = "", lastUser = "", fallbackT = 0, quiet = 0, relistenT = 0, safetyT = 0, wake = null, panel, status, said, stopBtn;
-
-  /* ---------- the character ----------
-     1) assets/live/dabsy-character.(png|webp) when you supply one (transparent background), 2) the existing layered DABSy artwork.
-     Never a replacement drawing. */
-  const G = { bodyW: 279, bodyH: 251, eyeL: [74, 91.6, 61.8, 91.2], eyeR: [164, 91, 59.4, 90], bow: [117, 190, 67.5, 36.2], pad: 26 };
-  const asset = f => (D.worldAssets && D.worldAssets[f]) || ("./assets/magic/" + f);
-  const pct = (v, t) => (v / t * 100).toFixed(2) + "%";
-  function layered(){
-    const W = G.bodyW + G.pad * 2, H = G.bodyH + G.pad * 2, o = G.pad;
-    const img = (cls, f, [x, y, w, h]) => { const i = ui.el("img", { class: cls, src: asset(f), alt: "", draggable: "false", decoding: "async" }); i.style.cssText = `left:${pct(x + o, W)};top:${pct(y + o, H)};width:${pct(w, W)};height:${pct(h, H)}`; return i; };
-    const wrap = ui.el("div", { class: "lt-layers", style: `aspect-ratio:${W}/${H}` });
-    const halo = ui.el("img", { class: "lt-halo", src: asset("dabsy-halo.webp"), alt: "", draggable: "false" });
-    const body = img("lt-body", "dabsy-body.webp", [0, 0, G.bodyW, G.bodyH]);
-    wrap.append(halo, body, img("lt-eye l", "dabsy-eye-l.webp", G.eyeL), img("lt-eye r", "dabsy-eye-r.webp", G.eyeR), img("lt-bow", "dabsy-bow.webp", G.bow));
-    return wrap;
-  }
-  function buildCharacter(host){
-    host.textContent = ""; host.append(layered());
-    const tryOne = ext => new Promise(res => { const i = new Image(); i.onload = () => res(i.naturalWidth ? i : null); i.onerror = () => res(null); i.src = "./assets/live/dabsy-character." + ext; });
-    Promise.all([tryOne("webp"), tryOne("png")]).then(r => {
-      const hit = r.find(Boolean); if(!hit) return;
-      hit.className = "lt-single"; hit.alt = ""; hit.draggable = false; host.textContent = ""; host.append(hit); host.dataset.mode = "single";
-    });
-  }
+  let on = false, state = "", lastUser = "", pending = "", silenceT = 0, readyT = 0, retries = 0, fallbackT = 0, quiet = 0, relistenT = 0, safetyT = 0, wake = null, panel, status, said, stopBtn;
 
   function build(){
     panel = ui.el("section", { id: "live-talk", "aria-label": "Live talk", hidden: true, "data-size": "compact", "data-mic": "off" },
@@ -45,7 +21,8 @@
         sizeBtn = ui.el("button", { class: "lt-icon", type: "button", "aria-label": "Expand", "aria-expanded": "false", onclick: toggleSize }, "")),
       stage = ui.el("div", { class: "lt-stage" },
         ui.el("div", { class: "lt-ripples", "aria-hidden": "true" }, ui.el("i", {}), ui.el("i", {}), ui.el("i", {})),
-        char = ui.el("button", { class: "lt-char", type: "button", "aria-label": "DABSy. Tap while I'm speaking to interrupt.", onclick: () => { if(state === "speaking") interrupt(); } }),
+        char = ui.el("button", { class: "lt-char", type: "button", "aria-label": "Voice activity. Tap while I'm speaking to interrupt.", onclick: () => { if(state === "speaking") interrupt(); } },
+          ui.el("i", {}), ui.el("i", {}), ui.el("i", {}), ui.el("i", {}), ui.el("i", {})),
         ui.el("div", { class: "lt-thinkdots", "aria-hidden": "true" }, ui.el("i", {}), ui.el("i", {}), ui.el("i", {}))),
       status = ui.el("div", { class: "lt-state", role: "status", "aria-live": "polite" }, ""),
       said = ui.el("div", { class: "lt-said" }, ""),
@@ -53,9 +30,8 @@
       ui.el("div", { class: "lt-actions" },
         stopBtn = ui.el("button", { class: "btn glass", type: "button", onclick: interrupt }, "Stop talking"),
         ui.el("button", { class: "btn glass primary", type: "button", onclick: () => stop() }, "End")),
-      ui.el("p", { class: "lt-note" }, "Uses your browser's speech recognition, which may need internet. I reply once I've finished thinking, so this isn't a streaming call. Tap me while I speak to interrupt."));
+      ui.el("p", { class: "lt-note" }, "Uses your browser's speech recognition, which may need internet. Pause for a moment when you finish and I will reply. Tap the bars while I speak to interrupt."));
     sizeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>';
-    buildCharacter(char);
     document.getElementById("stage").append(panel);
     const btn = ui.el("button", { id: "live-btn", type: "button", "aria-label": "Start live talk (hands-free conversation)", onclick: toggle }, "");
     btn.innerHTML = ui.icon("sparkle", 20);
@@ -90,37 +66,53 @@
   }
   function listen(delay){
     clearTimeout(relistenT);
-    relistenT = setTimeout(() => { if(!on) return; set("listening"); voice.startListening(); }, delay || 0);
+    relistenT = setTimeout(() => { if(!on) return; pending = ""; set("listening"); voice.startListening({ live: true }); watchStart(); }, delay || 0);
+  }
+  /* If the browser never actually starts the microphone (it often refuses a restart right after speech), try again instead of stalling. */
+  function watchStart(){
+    clearTimeout(readyT);
+    readyT = setTimeout(() => { if(on && state === "listening" && !micOn && retries++ < 3){ voice.startListening({ live: true }); watchStart(); } }, 1800);
+  }
+  /* You may pause mid-sentence. Nothing is sent until there has been ~1.7 s of real silence after your last word,
+     so DABSy no longer starts "thinking" while you are still talking. */
+  const SILENCE_MS = 1700;
+  function commit(){
+    clearTimeout(silenceT); const t = pending.trim(); pending = "";
+    if(!on || state !== "listening" || !t) return;
+    voice.stopListening();
+    bus.emit("voice:heard", { text: t, live: true });
   }
   async function start(){
     if(on) return;
     if(!SR){ bus.emit("dabsy:say", { text: "This browser can't do speech recognition, so live talk isn't available. Typing still works." }); return; }
     const r = await D.permissions.ensure("microphone", { reason: "Live talk needs the microphone. It only listens while the panel says Listening." });
     if(!r.granted){ if(r.declined) bus.emit("dabsy:say", { text: "No problem. You can type to me instead." }); return; }
-    on = true; quiet = 0; panel.hidden = false; document.body.classList.add("live-talk");
+    if(D.app && D.app.closeCommand) D.app.closeCommand();   // the chat dock (and its keyboard) must not stay up under the Live Talk card
+    on = true; quiet = 0; retries = 0; pending = ""; panel.hidden = false; document.body.classList.add("live-talk");
     try{ if(navigator.wakeLock) wake = await navigator.wakeLock.request("screen"); }catch(_){}   // keep the screen on while talking
     listen(0);
     if(D.ai && D.ai.status() === "limited") said.textContent = "AI isn't connected, so I can only help with tasks and reminders.";
   }
   function stop(msg){
     if(!on) return;
-    on = false; clearTimeout(relistenT); clearTimeout(safetyT); clearTimeout(fallbackT);
+    on = false; clearTimeout(relistenT); clearTimeout(safetyT); clearTimeout(fallbackT); clearTimeout(silenceT); clearTimeout(readyT); pending = "";
     voice.stopListening(); voice.stopSpeaking();
     setMic(false); panel.hidden = true; document.body.classList.remove("live-talk", "live-talk-full"); panel.dataset.size = "compact"; log.textContent = ""; sizeBtn.setAttribute("aria-expanded", "false");
     try{ wake && wake.release(); }catch(_){} wake = null;
     if(msg) bus.emit("dabsy:say", { text: msg });
   }
   const toggle = () => on ? stop() : start();
-  function interrupt(){ voice.stopSpeaking(); listen(200); }
+  function interrupt(){ voice.stopSpeaking(); clearTimeout(silenceT); listen(200); }
 
   bus.on("voice:heard", ({ text }) => {
     if(!on) return;
-    quiet = 0; lastUser = text; set("thinking", "“" + text + "”"); addLine("you", text);
+    quiet = 0; retries = 0; lastUser = text; set("thinking", "“" + text + "”"); addLine("you", text);
     clearTimeout(safetyT);                                   // if no reply is ever spoken (muted / error), don't hang
     safetyT = setTimeout(() => { if(on && state === "thinking") listen(0); }, 20000);
   });
   bus.on("voice:listening:end", () => {
     if(!on || state !== "listening") return;                 // a result moves us to "thinking" first
+    if(pending.trim()){ commit(); return; }                  // the browser ended the session right after you spoke: send what was heard
     if(++quiet >= 3) stop("I stopped listening because it was quiet. Tap the sparkle to start again.");
     else listen(300);
   });
@@ -143,7 +135,12 @@
       else { voice.speak(t); safetyT = setTimeout(() => { if(on && state === "thinking") listen(0); }, 5000); }   // speech never started (no voice installed?): carry on
     }, 1200);
   }).observe(document.getElementById("subtitle"), { childList: true, characterData: true, subtree: true });
-  bus.on("voice:listening:start", () => { if(on && state === "listening") setMic(true); });
+  bus.on("voice:interim", ({ text }) => {
+    if(!on || state !== "listening" || !text) return;
+    pending = text; quiet = 0; said.textContent = "“" + text + "”";
+    clearTimeout(silenceT); silenceT = setTimeout(commit, SILENCE_MS);
+  });
+  bus.on("voice:listening:start", () => { if(on && state === "listening"){ setMic(true); clearTimeout(readyT); } });
   bus.on("voice:listening:end", () => { setMic(false); });
   let beatT = 0;
   bus.on("voice:boundary", () => { if(!on || state !== "speaking" || !char) return; char.classList.add("beat"); clearTimeout(beatT); beatT = setTimeout(() => char.classList.remove("beat"), 150); });

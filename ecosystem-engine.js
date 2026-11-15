@@ -132,6 +132,7 @@
   function choose(app){
     close();
     setTimeout(() => {
+      if(app.id === "doodle") return window.DABSy.require("doodle").then(m => m.open()).catch(err => ui.toast({ title: "Couldn't open Doodle Space", text: String(err.message || err) }));
       if(app.id === "settings") return window.DABSy.require("settings").then(s => s.open()).catch(err => ui.toast({ title: "Couldn't open Settings", text: String(err.message || err) }));
       if(app.hub) return app.hub(app);
       hubFor(app);

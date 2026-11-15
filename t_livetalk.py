@@ -18,7 +18,7 @@ try:
     s=st(); check("mic on -> 'Listening', ripples visible, badge 'Mic on'",s['mic']=="on" and s['label']=="Listening" and s['micTxt']=="Mic on" and s['ripple']>0.9,s)
     pg.screenshot(path="/tmp/lt_listening.png")
     # eyes + body images really loaded
-    check("DABSy's own character layers are loaded (body, eyes, bow)",pg.evaluate("Array.from(document.querySelectorAll('.lt-layers img')).every(i=>i.complete&&i.naturalWidth>0)") and pg.locator(".lt-layers img").count()==5)
+    check("v12.1: no DABSy image inside the Live Talk card",pg.locator("#live-talk img").count()==0)
     check("no generic random circle/ring element remains",pg.locator(".lt-ring").count()==0)
     # heard -> thinking
     pg.evaluate("window.DABSy.bus.emit('voice:heard',{text:'what is newtons second law'});window.DABSy.bus.emit('voice:listening:end')"); pg.wait_for_timeout(400)
@@ -32,7 +32,7 @@ try:
     pg.evaluate("window.DABSy.bus.emit('voice:speaking:start')"); pg.wait_for_timeout(300)
     s=st(); check("speaking: distinct state, mic OFF, Stop shown",s['s']=="speaking" and s['mic']=="off" and s['label']=="Speaking" and not s['stopHidden'],s)
     pg.evaluate("window.DABSy.bus.emit('voice:boundary')"); pg.wait_for_timeout(30)
-    check("character beats on spoken words",pg.evaluate("document.querySelector('.lt-char').classList.contains('beat')"))
+    check("voice indicator beats on spoken words",pg.evaluate("document.querySelector('.lt-char').classList.contains('beat')"))
     pg.screenshot(path="/tmp/lt_speaking.png")
     # expand
     h0=pg.evaluate("document.getElementById('live-talk').getBoundingClientRect().height")
@@ -40,7 +40,7 @@ try:
     h1=pg.evaluate("document.getElementById('live-talk').getBoundingClientRect().height")
     check("expands to use more of the screen",h1>h0+200 and pg.evaluate("document.getElementById('live-talk').dataset.size")=="full",(h0,h1))
     check("expanded view shows the conversation",pg.locator(".lt-line").count()>=2,pg.locator(".lt-line").all_inner_texts())
-    check("DABSy and controls still visible when expanded",pg.locator(".lt-char").is_visible() and pg.locator(".lt-actions .primary").is_visible() and pg.locator(".lt-icon").is_visible())
+    check("voice indicator and controls still visible when expanded",pg.locator(".lt-char").is_visible() and pg.locator(".lt-actions .primary").is_visible() and pg.locator(".lt-icon").is_visible())
     box=pg.evaluate("(()=>{const r=document.getElementById('live-talk').getBoundingClientRect();return [r.top,r.bottom,innerHeight]})()")
     check("expanded card fits the screen",box[0]>=0 and box[1]<=box[2],box)
     pg.screenshot(path="/tmp/lt_full.png")
