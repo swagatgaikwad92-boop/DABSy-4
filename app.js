@@ -170,7 +170,7 @@
     const m = { "not-allowed": "I don't have microphone permission. Allow it in your browser's site settings.", "service-not-allowed": "Microphone access is blocked for this site.", "no-speech": "I didn't hear anything. Try again.", "audio-capture": "I couldn't find a working microphone.", network: "Speech recognition needs an internet connection." };
     showSubtitle(m[error] || "Something went wrong with the microphone. Try again.");
   });
-  bus.on("voice:heard", ({ text }) => handleUserUtterance(text));
+  bus.on("voice:heard", ({ text }) => handleUserUtterance(text, { viaVoice: true }));
 
   /* ---------- pending schedule conflict (waits for the NEXT utterance) ----------
      pendingConflict.core is set when the conflict was found against the shared
@@ -427,14 +427,18 @@
   /* ---------------- the utterance router ---------------- */
   // one utterance at a time: a double Enter or a repeated speech result must not send twice
   let utteranceBusy = false;
-  async function handleUserUtterance(text){
+  async function handleUserUtterance(text, o){
     if(utteranceBusy) return;
     utteranceBusy = true;
     textInput.readOnly = true;        // not "disabled": that drops focus and closes the phone keyboard after every send
     try{ await processUtterance(text); }
     finally{
       utteranceBusy = false; textInput.readOnly = false;
-      if(chatArea.classList.contains("visible") && document.activeElement !== textInput) textInput.focus({ preventScroll: true });
+      // Re-focus only after a TYPED message (so the keyboard stays up for the next one). After a spoken message, or while Live Talk
+      // is open, focusing the field made the phone keypad pop up the moment DABSy replied.
+      const spoken = (o && o.viaVoice) || document.body.classList.contains("live-talk");
+      if(!spoken && chatArea.classList.contains("visible") && document.activeElement !== textInput) textInput.focus({ preventScroll: true });
+      if(spoken && document.activeElement === textInput) textInput.blur();
     }
   }
   async function processUtterance(text, o){
