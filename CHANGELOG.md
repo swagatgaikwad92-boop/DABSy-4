@@ -1,3 +1,7 @@
+## v12.1.0
+* **Doodle Space** (Fun + Maths notebooks) — see docs/DOODLE_SPACE.md. New: doodle-math.js, doodle-store.js, doodle-canvas.js, doodle-space.js, doodle.css. Edited: dabsy-config.js, ecosystem-engine.js, ai-engine.js (vision()), sw.js.
+* **Live Talk**: removed the DABSy picture from the card (the real DABSy stays on screen above it; a small voice indicator shows the state); it now waits for ~1.7 s of real silence before replying, so it no longer starts "thinking" while you pause mid-sentence; the keypad no longer pops up after a spoken reply (app.js, voice-engine.js, live-talk.js, livetalk.css).
+
 # DABSy v12.0.0 — experience, interaction, study intelligence, visual design
 
 - Day "Morning Paper" / night "Midnight Study" palettes (day.css), Liquid Glass material + touch response (glass.css, glass-engine.js).

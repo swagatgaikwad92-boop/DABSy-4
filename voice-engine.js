@@ -13,6 +13,7 @@
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let recognizer = null;
   let listening = false;
+  let liveMode = false;   // v12.1: Live Talk listens continuously and decides itself when you have finished (see live-talk.js)
 
   function initRecognizer(){
     if(!SR) return null;
@@ -29,6 +30,11 @@
       console.warn("SpeechRecognition error:", e.error);
     };
     r.onresult = (e)=>{
+      if(liveMode){                       // keep everything said so far; Live Talk waits for a real pause before sending it
+        let t = ""; for(let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript + " ";
+        bus.emit("voice:interim", { text: t.replace(/\s+/g, " ").trim() });
+        return;
+      }
       const text = e.results[0][0].transcript;
       bus.emit("voice:heard", { text });
     };
@@ -42,10 +48,12 @@
     if(text && /[\u0900-\u097F]/.test(text)) return "hi-IN";      // Devanagari text: speak it with a Hindi/Marathi voice
     return null;
   }
-  function startListening(){
+  function startListening(opts){
     if(!SR){ bus.emit("voice:unsupported"); return; }
     if(listening) return;
     recognizer = recognizer || initRecognizer();
+    liveMode = !!(opts && opts.live);
+    recognizer.continuous = liveMode; recognizer.interimResults = liveMode;
     recognizer.lang = LANG_TAG[memory.getSettings().replyLang] || navigator.language || "en-US";
     try{ recognizer.start(); }catch(e){ /* already started */ }
   }

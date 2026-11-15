@@ -19,7 +19,7 @@
   window.DABSy = window.DABSy || {};
 
   const CONFIG = {
-    version: "12.0.0",
+    version: "12.1.0",
 
     push: {
       // Web Push for reminders when the app is closed. Deploy backend/ (see BACKEND.md, "Web Push"), then put its
@@ -35,6 +35,9 @@
       // "message" = the dabsy-brain Worker: POST {message} -> {reply}
       // "proxy"   = the original backend/worker.js: POST /v1/generate
       mode: "message",
+      // v12.1: set true ONLY when your Worker accepts {message, image:{mimeType,data}} and forwards the picture to a vision model
+      // (see docs/DOODLE_SPACE.md). Leave false otherwise: Doodle Space then says plainly that it cannot look at pictures yet.
+      imageInMessage: false,
       requestTimeoutMs: 25000,
     },
 
@@ -56,6 +59,7 @@
         { id: "study",      name: "Study Space",     url: "https://swagatgaikwad92-boop.github.io/study-space/", icon: "book", handoff: "studyspace" },
         { id: "calendar",   name: "Ghibli Calendar", url: "https://swagatgaikwad92-boop.github.io/Ghibli-Calander/", icon: "leaf", handoff: "core-calendar" },
         { id: "solvecount", name: "SolveCount",      url: "https://swagatgaikwad92-boop.github.io/SolveCount/", icon: "count", handoff: "summary" },
+        { id: "doodle",     name: "Doodle Space",    builtin: true,              icon: "pencil", lazy: "doodle" },
         { id: "settings",   name: "Settings",        builtin: true,              icon: "sliders" },
       ],
     },
@@ -96,6 +100,8 @@
     games:       { js: ["entertainment-engine.js"] },
     floating:    { js: ["floating-engine.js"] },
     vision:      { js: ["vision-engine.js"] },
+    // v12.1: Doodle Space (Fun + Maths notebooks). Loaded only when its bubble is tapped; nothing here runs at start-up.
+    doodle:      { js: ["doodle-math.js", "doodle-store.js", "doodle-canvas.js", "doodle-space.js"], css: ["doodle.css"] },
     // v11.3 step 1: action intelligence foundation (plans, capabilities, intent safety, orchestrator). Loading it executes nothing.
     execution:   { js: ["action-contract.js", "capability-registry.js", "intent-safety.js", "execution-engine.js"] },
   };
