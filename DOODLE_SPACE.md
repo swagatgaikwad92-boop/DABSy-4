@@ -11,21 +11,15 @@ Open: double-tap DABSy -> app bubbles -> **Doodle Space**. Modes: **Fun** and **
 | `doodle-space.js` | UI and flows (modes, pages, toolbars, Ask DABSy, Read/Check/Hint/Solve). |
 | `doodle.css` | Styles (Morning Paper / Midnight Study, existing glass tokens). |
 
-## What needs a vision-capable AI (and what does not)
-* **Needs it:** *Ask DABSy* (Fun) and *Read / Check* (Maths: reading handwriting). Only the chosen drawing/region is sent, only when you tap.
-* **Does not:** drawing, saving, pages, page breaks, and in Maths: *Solve*, *Hint*, verification, typed-in expressions, the working checker (once a reading is confirmed or typed).
-* **The deployed `dabsy-brain` Worker takes `{message}` only**, so by default `ai.imageInMessage` is `false` and DABSy says plainly: "I can't look at pictures through the current setup yet." Without a vision-capable service, Maths still works via the **type-it** fallback in the confirmation card.
+## Vision (v12.1.2)
+Pictures are only read by a **vision service you connect** (see `backend/VISION_SETUP.md`). DABSy proves it works with a generated test picture (random colour + digit) before it says it can see, and tells you exactly why if it can't. Drawing, saving, pages, customisation, and on-device maths (Solve, Hint, working checker, typed input) never need it.
 
-### Turning vision on (you must do this part; it is untested here)
-1. Extend your Worker to accept `{ message, image: { mimeType, data } }` (base64, no data-URL prefix) and forward the image to a vision model. Sketch for Gemini (adapt to your Worker):
-```js
-const { message, image } = await request.json();
-const parts = [{ text: message }];
-if (image && image.data) parts.push({ inline_data: { mime_type: image.mimeType || "image/jpeg", data: image.data } });
-// POST { contents: [{ role: "user", parts }] } to your Gemini generateContent URL, return { reply: <text> }
-```
-2. In `dabsy-config.js` set `ai.imageInMessage: true`. Prompts tell the model to answer `NO_IMAGE` if it cannot see a picture; DABSy then reports that instead of inventing a reading.
-3. If you use the original `backend/worker.js` (`mode: "proxy"`), images already go through `/v1/generate`.
+## Customisation (v12.1.2)
+* **Pen:** 5 presets (Fine liner, Normal pen, Thick marker, Pencil, Highlighter), colour + custom colour, thickness, opacity, smoothing (stabilisation), live preview. Tap the active Pen, or "Pen settings".
+* **Eraser:** Small/Medium/Large + custom size; "Rub out" or "Whole stroke"; Clear page; Undo/Redo. Tap the active Eraser.
+* **Pages:** 9 papers + custom colour (plain, warm, dark, cream notebook, light/dark grid, ruled, dotted, graph); sizes: standard, larger, extended-maths (2x tall), long (3x tall); rename, duplicate, reorder, delete with confirmation. Per page, or "apply to every page".
+* Everything is remembered: pen and eraser per notebook (Fun and Maths separately), paper/size/name per page, in this device's storage.
+* No infinite canvas: pages are bounded so phones stay smooth. Use a taller page or more pages.
 
 ## Safety rules implemented
 * A reading is **always shown**; if confidence < 0.85, the model flags doubt, a visually-confusable pattern is detected (x/×, 1/l, 0/O, √ reach, 1/2x), or you are checking working, you must confirm or edit it first. Nothing is solved from an unconfirmed reading.

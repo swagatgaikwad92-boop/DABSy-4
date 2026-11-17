@@ -19,7 +19,7 @@
   window.DABSy = window.DABSy || {};
 
   const CONFIG = {
-    version: "12.1.0",
+    version: "12.1.2",
 
     push: {
       // Web Push for reminders when the app is closed. Deploy backend/ (see BACKEND.md, "Web Push"), then put its
@@ -35,8 +35,11 @@
       // "message" = the dabsy-brain Worker: POST {message} -> {reply}
       // "proxy"   = the original backend/worker.js: POST /v1/generate
       mode: "message",
-      // v12.1: set true ONLY when your Worker accepts {message, image:{mimeType,data}} and forwards the picture to a vision model
-      // (see docs/DOODLE_SPACE.md). Leave false otherwise: Doodle Space then says plainly that it cannot look at pictures yet.
+      // v12.1.2 VISION. The deployed dabsy-brain Worker is text-only. Deploy backend/vision-worker.js as its own free Worker
+      // (see backend/VISION_SETUP.md) and put its URL here, OR paste it in Doodle Space -> menu -> "Vision setup" (stored only on this device).
+      // Empty = no pictures are ever sent; Doodle Space says exactly why.
+      visionUrl: "",
+      // Set true only if your main Worker itself forwards {message, image:{mimeType,data}} to a vision model. DABSy still verifies it with a test picture.
       imageInMessage: false,
       requestTimeoutMs: 25000,
     },
