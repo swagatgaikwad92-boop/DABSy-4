@@ -1,0 +1,30 @@
+DABSy v12.1.3 - Built-in Vision URL integration
+
+FILES TO REPLACE IN YOUR EXISTING DABSy PROJECT:
+1. dabsy-config.js
+2. sw.js
+
+Both files belong in the same project root as your existing index.html.
+Do not replace the rest of your project. Do not upload these two files into the backend Worker.
+
+WHAT CHANGED:
+- Set ai.visionUrl to https://dabsy-vision.swagatdemo9292.workers.dev
+- Updated app config version to 12.1.3
+- Updated service-worker cache name to dabsy-v12.1.3 so browsers fetch the updated configuration.
+- No API key is included. GEMINI_API_KEY remains a Cloudflare Worker Secret.
+
+PHONE-FRIENDLY DEPLOYMENT:
+1. Keep a backup copy of your current working DABSy project.
+2. Open your GitHub repository and its DABSy project root.
+3. Replace the existing dabsy-config.js with this package's dabsy-config.js.
+4. Replace the existing sw.js with this package's sw.js.
+5. Commit the two file changes.
+6. Wait for GitHub Pages to finish publishing.
+7. Close DABSy completely and reopen it. If the old config remains cached, clear the site's stored data/cache in Chrome and reopen the site.
+8. Open Doodle Space -> menu -> Vision setup. It should already show the Worker URL. Tap Connect and test once.
+
+IMPORTANT:
+- This makes the Vision Worker URL built into this deployed DABSy version for every device using this build.
+- It does not embed the Gemini API key in the app.
+- The app still needs internet access and the Cloudflare Worker must remain deployed with GEMINI_API_KEY configured.
+- Do not change dabsy-brain. This is a separate vision endpoint.
