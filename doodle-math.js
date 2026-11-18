@@ -117,7 +117,7 @@
     throw new MathErr("Unbalanced braces in the expression.");
   }
   function fromLatex(s){
-    s = s.replace(/\\left|\\right/g, "").replace(/\\,|\\;|\\!|\\ /g, " ").replace(/\\cdot|\\times/g, "*").replace(/\\div/g, "/").replace(/\\leq?\b/g, "≤").replace(/\\geq?\b/g, "≥").replace(/\\neq?\b/g, "≠").replace(/\\pi\b/g, "π").replace(/\\infty/g, "inf");
+    s = s.replace(/\\(?:vec|overrightarrow|overline|bar|hat|mathbf)\{([^{}]*)\}/g, "$1").replace(/\\left|\\right/g, "").replace(/\\,|\\;|\\!|\\ /g, " ").replace(/\\cdot|\\times/g, "*").replace(/\\div/g, "/").replace(/\\leq?\b/g, "≤").replace(/\\geq?\b/g, "≥").replace(/\\neq?\b/g, "≠").replace(/\\pi\b/g, "π").replace(/\\infty/g, "inf");
     let guard = 0;
     while(/\\frac/.test(s) && guard++ < 50){
       const i = s.indexOf("\\frac"); let j = i + 5; while(s[j] === " ") j++;

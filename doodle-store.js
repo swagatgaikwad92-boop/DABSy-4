@@ -41,13 +41,16 @@
   }
   async function del(key){ mem.delete(key); const db = await open(); if(!db) return false; try{ await wrap(tx(db, "readwrite").delete(key)); return true; }catch(e){ fail(e); return false; } }
   const uid = () => "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  const mk = id => ({ id: id || uid(), strokes: [], blocks: [], updated: Date.now() });
+  /* v12.1.2: each page also remembers its own paper ("bg": {k, c?, pat?}) and size key; the notebook remembers defaults for new pages and page names. */
+  const mk = (id, o) => ({ id: id || uid(), strokes: [], blocks: [], bg: (o && o.bg) || null, size: (o && o.size) || null, updated: Date.now() });
 
   /* A notebook is loaded once per open; pages are fetched on demand. */
   async function loadNotebook(mode){
     let meta = await get("meta:" + mode);
-    if(!meta || !Array.isArray(meta.pages) || !meta.pages.length){ const p = mk(); meta = { pages: [p.id], current: p.id, paper: mode === "maths" ? "grid" : "plain" }; await set("page:" + mode + ":" + p.id, p); await set("meta:" + mode, meta); }
+    if(!meta || !Array.isArray(meta.pages) || !meta.pages.length){ const p = mk(); meta = { pages: [p.id], current: p.id, paper: mode === "maths" ? "grid" : "plain", bg: { k: mode === "maths" ? "graph" : "plain" }, size: "std", names: {} }; await set("page:" + mode + ":" + p.id, p); await set("meta:" + mode, meta); }
     if(!meta.pages.includes(meta.current)) meta.current = meta.pages[0];
+    if(!meta.bg) meta.bg = { k: meta.paper === "grid" ? (mode === "maths" ? "graph" : "grid") : meta.paper === "ruled" ? "ruled" : "plain" };   // upgrade from v12.1
+    if(!meta.size) meta.size = "std"; if(!meta.names) meta.names = {};
     return meta;
   }
   const saveMeta = (mode, meta) => set("meta:" + mode, meta);
