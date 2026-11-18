@@ -13,7 +13,7 @@ def vis(pg,reply):
     pg.evaluate("r=>{window.__v=[];window.DABSy.ai.vision=async o=>{window.__v.push(o);return typeof r==='function'?r(o):r}}",None) if False else None
 def mock(pg,obj):
     import json
-    pg.evaluate("t=>{window.__v=[];window.DABSy.ai.vision=async o=>{window.__v.push({len:(o.image||'').length,prompt:o.prompt});return {ok:true,text:t}}}",json.dumps(obj))
+    pg.evaluate("t=>{const D=window.DABSy;window.__orig=window.__orig||{vs:D.ai.visionStatus,vi:D.ai.vision};D.ai.visionStatus=()=>({ok:true});window.__v=[];window.DABSy.ai.vision=async o=>{window.__v.push({len:(o.image||'').length,prompt:o.prompt});return {ok:true,text:t}}}",json.dumps(obj))
 def write_something(pg,y=100):
     stroke(pg,[(40,y),(90,y+30),(140,y),(190,y+30)]); 
 def read_region(pg,y=100):
@@ -27,7 +27,7 @@ try:
     # 1) arithmetic, high confidence: shown with result, no confirmation needed
     write_something(pg,100); mock(pg,{"lines":[{"latex":"1 + 2 =","confidence":0.97}],"unclear":[]})
     read_region(pg,100)
-    check("[mock recognition] one image sent for the chosen region only",pg.evaluate("window.__v.length")==1 and pg.evaluate("window.__v[0].len")>200)
+    check("[MOCK vision service] one image sent for the chosen region only",pg.evaluate("window.__v.length")==1 and pg.evaluate("window.__v[0].len")>200)
     res=pg.evaluate("(document.querySelector('.dd-res')||{}).textContent")
     check("'1 + 2 =' shows the computed result beside it (= 3) by the LOCAL engine",res and res.strip()=="= 3",res)
     pg.screenshot(path="/tmp/dd_math_arith.png")
@@ -56,9 +56,12 @@ try:
     pg.fill(".dd-ta","2 × 3 = 6"); pg.click(".dd-actions >> text=Yes, that's it"); pg.wait_for_timeout(600)
     check("after the user's correction it is accepted and checked locally (✓ true)",pg.evaluate("window.DABSy.doodle._S.page.blocks.length")==n+1 and "true" in pg.inner_text(".dd-resline"))
     # 4) no vision-capable service: honest + typed fallback still computes
-    write_something(pg,650); pg.evaluate("window.DABSy.ai.vision=async o=>({ok:false,error:'no-image'})")
+    write_something(pg,650); pg.evaluate("(()=>{const D=window.DABSy;D.ai.vision=window.__orig.vi;D.ai.visionStatus=window.__orig.vs})()")
     n=pg.evaluate("window.DABSy.doodle._S.page.blocks.length"); read_region(pg,650)
-    check("no vision service: says so plainly and offers typing instead of guessing",("can't look at pictures" in pg.inner_text(".dd-card")) and pg.locator(".dd-ta").count()==1 and pg.evaluate("window.DABSy.doodle._S.page.blocks.length")==n)
+    pg.wait_for_timeout(1200)
+    check("REAL path, no vision service: says so plainly, offers setup and typing, creates no reading",("No vision service is connected" in pg.inner_text(".dd-card")) and pg.locator("text=Type it instead").count()==1 and pg.evaluate("window.DABSy.doodle._S.page.blocks.length")==n)
+    pg.click("text=Type it instead"); pg.wait_for_timeout(300)
+    check("typed fallback opens the confirm box",pg.locator(".dd-ta").count()==1)
     pg.fill(".dd-ta","\\frac{1}{2}+\\frac{1}{3}"); pg.click(".dd-actions >> text=Yes, that's it"); pg.wait_for_timeout(600)
     check("typed fractions computed exactly offline (= 5/6)",pg.evaluate("[...document.querySelectorAll('.dd-res')].some(e=>e.textContent.includes('5/6'))"))
     # 5) misread equation is never silently solved: wrong reading -> user edits
@@ -78,7 +81,7 @@ try:
     pg.evaluate("window.__st=[];window.DABSy.ai.study=async(q)=>{window.__st.push(q===undefined?'UNDEF '+new Error().stack.split('\\n').slice(2,4).join('|'):q);return {ok:true,text:'Think about moving 3 to the other side: it changes sign.'}}")
     pg.click(".dd-card .dd-opts >> text=Explain this step"); pg.wait_for_timeout(700)
     print("DBG",pg.evaluate("window.__st"),pg.inner_text(".dd-card")[:200])
-    check("[mock tutor] explain request carries the verified facts and the working",("Verified solution" in pg.evaluate("window.__st.filter(Boolean)[0]")) and "2x = 14" in pg.evaluate("window.__st.filter(Boolean)[0]") and "Think about" in pg.inner_text(".dd-card"))
+    check("[MOCK tutor] explain request carries the verified facts and the working",("Verified solution" in pg.evaluate("window.__st.filter(Boolean)[0]")) and "2x = 14" in pg.evaluate("window.__st.filter(Boolean)[0]") and "Think about" in pg.inner_text(".dd-card"))
     # 8) offline explain
     pg.context.set_offline(True); pg.evaluate("window.dispatchEvent(new Event('offline'))")
     pg.click(".dd-card >> text=Back"); pg.wait_for_timeout(200); pg.click(".dd-opts >> text=Explain the concept"); pg.wait_for_timeout(500)

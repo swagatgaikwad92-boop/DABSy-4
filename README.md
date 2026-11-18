@@ -1,5 +1,11 @@
-# Magic World assets
-Character layers + room pictures derived from artwork you supplied (nothing redrawn).
-Rooms: room-night.webp (+ window-nook-day.webp), lakeside-day/night.webp, city-window-day.webp (no night version supplied). thumbs/ = picker previews.
-Each picture also has a root-level embedded copy (magic-assets.js / wp-*.js / wallpaper-thumbs.js) used if folders are not uploaded. Regenerate: python3 tools/embed-assets.py
-To add a wallpaper: drop the .webp here, add an entry in habitats-data.js (spots = where DABSy stands).
+# DABSy v12 browser tests
+
+Headless-Chromium tests (Playwright for Python) that drive the real app with a touch-emulated phone viewport.
+The AI proxy, weather and search providers are mocked, so they run offline.
+
+    pip install playwright && playwright install chromium
+    cd tests && ./t_all.sh                 # chatbox, study, prefs, schedule, live talk, widgets
+    python3 t_timer.py ; python3 t_fallback.py ; python3 t_sweep.py
+
+`shots.py` / `shots2.py` write screenshots to /tmp/shots (day and night).
+These tests prove the interface logic. They cannot prove that a live AI model answers physics correctly, or how the app feels on a particular phone.

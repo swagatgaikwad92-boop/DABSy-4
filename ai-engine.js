@@ -153,23 +153,80 @@
     const r = await post("/v1/generate", { task: o.task || "chat", system: o.bare ? bareSystem(o.system) : personaSystem(o.system), prompt: o.prompt, json: !!o.json, image: o.image || undefined });
     return r;
   }
-  /* v12.1 (Doodle Space): look at ONE picture the person chose to send.
-     - proxy mode:   POST /v1/generate with {image} (the original backend supports this).
-     - message mode: the deployed dabsy-brain takes {message} only. Sending a picture needs a Worker that also accepts
-       {message, image:{mimeType,data}} and forwards it to a vision model; set ai.imageInMessage = true once it does (docs/DOODLE_SPACE.md).
-       Until then this returns error "no-image" — it never pretends to have seen the picture. */
+  /* ---------------- vision (v12.1.2) ----------------
+     WHY v12.1 COULD NOT SEE (found by reading the pipeline; the deployed Worker's source is not in this project, so this part is inferred):
+       1. The deployed `dabsy-brain` Worker's contract is { message } -> { reply }: text only. Nothing in this project shows that it forwards images.
+       2. v12.1's client refused to even try in "message" mode (ai.imageInMessage was false), so no picture ever left the phone.
+       3. Nothing verified the other end: even with the flag on, a Worker that silently drops the picture would answer from the text alone.
+     NOW: pictures go to a vision-capable service the person controls (backend/vision-worker.js, or any Worker with the same contract),
+     and DABSy proves the service really sees images (checkVision: a freshly generated picture with a random colour + digit it must read back)
+     before it says it can look at anything. A service that ignores pictures is detected and reported as such; nothing is ever "analysed" by guessing. */
+  function visionUrl(){
+    let u = String(cfg().visionUrl || "").trim();
+    try{ const d = localStorage.getItem("dabsy_vision_url"); if(d && /^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)[:\/])/i.test(d.trim())) u = d.trim(); }catch(_){}
+    return u.replace(/\/+$/, "");
+  }
+  const vstate = { ok: null, why: "", at: 0, via: "" };
+  try{ const c = JSON.parse(localStorage.getItem("dabsy_vision_ok") || "null"); if(c && Date.now() - c.at < 12 * 3600e3 && c.url === (visionUrl() || cfg().proxyUrl)) Object.assign(vstate, { ok: true, at: c.at, via: c.via }); }catch(_){}
+  async function postVision(base, o){
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), Math.max(cfg().requestTimeoutMs || 25000, 35000));
+    try{
+      const res = await fetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, signal: ctl.signal,
+        body: JSON.stringify({ message: o.prompt, system: o.system || "", json: !!o.json, image: { mimeType: o.mime || "image/jpeg", data: o.image } }) });
+      let data = null; try{ data = await res.json(); }catch(_){}
+      if(res.status === 429) return { ok: false, error: "rate-limited" };
+      if(res.status === 413) return { ok: false, error: "image-too-large" };
+      if(!res.ok) return { ok: false, error: data && data.error ? "provider" : "http-" + res.status, detail: (data && data.error) || String(res.status) };
+      if(!data || typeof data.reply !== "string" || !data.reply.trim()) return { ok: false, error: "bad-response" };
+      return { ok: true, text: data.reply.trim() };
+    }catch(e){ return { ok: false, error: !navigator.onLine ? "offline" : (e && e.name === "AbortError") ? "timeout" : "network" }; }
+    finally{ clearTimeout(t); }
+  }
+  /* Look at ONE picture the person chose to send. Returns { ok, text } or { ok:false, error }. Never fabricates a reading. */
   async function vision(o){
     o = o || {};
-    if(!cfg().proxyUrl) return { ok: false, error: "no-proxy" };
     if(!o.image) return { ok: false, error: "no-image" };
     if(!navigator.onLine) return { ok: false, error: "offline" };
+    const sys = o.bare === false ? personaSystem(o.system) : bareSystem(o.system);
+    const url = visionUrl();
+    if(url) return withRetry(() => postVision(url, { prompt: o.prompt, system: sys, json: o.json, mime: o.mime, image: o.image }));
+    if(!cfg().proxyUrl) return { ok: false, error: "no-proxy" };
     if(cfg().mode === "message"){
-      if(!cfg().imageInMessage) return { ok: false, error: "no-image" };
-      const sys = (o.bare === false ? personaSystem(o.system) : bareSystem(o.system));
+      // the main Worker is text-only unless the owner says (or the probe proves) otherwise
+      if(!(o.probe || cfg().imageInMessage === true || vstate.ok === true)) return { ok: false, error: "no-vision" };
       return withRetry(() => postMessage(sys + "\n\n" + (o.prompt || ""), { mime: o.mime, data: o.image }));
     }
-    return withRetry(() => post("/v1/generate", { task: o.task || "vision", system: o.bare === false ? personaSystem(o.system) : bareSystem(o.system), prompt: o.prompt, json: !!o.json, image: o.image }));
+    return withRetry(() => post("/v1/generate", { task: o.task || "vision", system: sys, prompt: o.prompt, json: !!o.json, image: o.image }));
   }
+  /* Proves the vision path end to end with a SYNTHETIC picture (no personal data): a random coloured circle with a random digit on it.
+     A text-only service cannot guess both (1 in 24). Result is remembered 12 h per service URL. */
+  function makeProbeImage(){
+    const colours = { red: "#d93025", blue: "#1a56db", green: "#188038" }, names = Object.keys(colours);
+    const colour = names[Math.floor(Math.random() * names.length)], digit = String(2 + Math.floor(Math.random() * 8));
+    const c = document.createElement("canvas"); c.width = c.height = 256; const x = c.getContext("2d");
+    x.fillStyle = "#fff"; x.fillRect(0, 0, 256, 256); x.fillStyle = colours[colour]; x.beginPath(); x.arc(128, 128, 96, 0, 6.2832); x.fill();
+    x.fillStyle = "#fff"; x.font = "bold 120px sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(digit, 128, 136);
+    return { colour, digit, data: c.toDataURL("image/jpeg", 0.9).split(",")[1] };
+  }
+  async function checkVision(force){
+    if(!force && vstate.ok === true) return { ok: true, via: vstate.via };
+    if(!visionUrl() && !cfg().proxyUrl) return { ok: false, why: "no-service" };
+    if(!navigator.onLine) return { ok: false, why: "offline" };
+    const pr = makeProbeImage();
+    const r = await vision({ probe: true, bare: true, json: true, image: pr.data, mime: "image/jpeg", prompt: 'Look at the image. Reply with ONLY JSON: {"circle_colour":"red|blue|green","digit":"<the digit written on the circle>"}. If you cannot see an image attached to this message, reply exactly {"error":"NO_IMAGE"}.' });
+    let out;
+    if(!r.ok) out = { ok: false, why: r.error === "no-vision" ? "no-service" : r.error === "offline" ? "offline" : "unreachable", detail: r.detail || r.error };
+    else { const m = /\{[\s\S]*\}/.exec(r.text); let j = null; try{ j = m && JSON.parse(m[0]); }catch(_){}
+      const col = j && String(j.circle_colour || "").toLowerCase(), dig = j && String(j.digit || "").trim();
+      if(col === pr.colour && dig === pr.digit) out = { ok: true, via: visionUrl() ? "vision-url" : "main-proxy" };
+      else out = { ok: false, why: "ignores-images", detail: "asked about a " + pr.colour + " circle with " + pr.digit + ", got: " + String(r.text).slice(0, 80) }; }
+    if(!out.ok && !visionUrl() && out.why !== "offline") out.why = "no-service";      // the main Worker is the only thing we tried: it isn't a vision service
+    vstate.ok = out.ok; vstate.why = out.why || ""; vstate.at = Date.now(); vstate.via = out.via || "";
+    try{ if(out.ok) localStorage.setItem("dabsy_vision_ok", JSON.stringify({ at: vstate.at, url: visionUrl() || cfg().proxyUrl, via: out.via })); else localStorage.removeItem("dabsy_vision_ok"); }catch(_){}
+    return out;
+  }
+  const visionStatus = () => Object.assign({}, vstate, { url: visionUrl() });
+  function setVisionUrl(u){ try{ if(!u) localStorage.removeItem("dabsy_vision_url"); else localStorage.setItem("dabsy_vision_url", u.trim()); localStorage.removeItem("dabsy_vision_ok"); }catch(_){} vstate.ok = null; vstate.why = ""; }
   function stripFences(raw){ return String(raw || "").trim().replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim(); }
   function tryJSON(raw){
     try{ return JSON.parse(stripFences(raw)); }catch(e){
@@ -334,7 +391,8 @@
     if(err === "rate-limited") return "I'm a bit overloaded right now. Try again in a moment.";
     if(err === "offline") return "You're offline right now.";
     if(err === "no-proxy") return "My thinking service isn't set up yet, so I'm in limited mode.";
-    if(err === "no-image") return "I can't look at pictures with the current setup yet.";
+    if(err === "no-image" || err === "no-vision") return "I can't look at pictures with the current setup yet.";
+    if(err === "image-too-large") return "That picture is too big to send. Zoom out or select a smaller area.";
     if(err === "timeout") return "That took too long. Tap Retry, or ask me in a shorter way.";
     if(err === "provider") return "My thinking service had a hiccup on its side. Tap Retry in a moment.";
     if(err === "bad-response") return "I got a strange answer back from my thinking service. Try again.";
@@ -548,7 +606,7 @@
 
   window.DABSy.ai = {
     status: () => state, statusInfo, check, generate, askJSON, research, localParse, parseGoal, parseIntent,
-    askConflictQuestion, resolveConflictIntent, askDABSy, vision, study, isConfused, errorLine, chat, expand, refine, isPlainChat, detectLang, explicitLang, resolveLang, setSessionLang, FAIL_TEXT, limitedReply, parseTimeOfDay, parseDuration, parseDayOffset, subjectOf,
+    askConflictQuestion, resolveConflictIntent, askDABSy, vision, checkVision, visionStatus, setVisionUrl, visionUrl, study, isConfused, errorLine, chat, expand, refine, isPlainChat, detectLang, explicitLang, resolveLang, setSessionLang, FAIL_TEXT, limitedReply, parseTimeOfDay, parseDuration, parseDayOffset, subjectOf,
     get canSearch(){ return state !== "limited" && caps.search; },
   };
   window.addEventListener("load", () => setTimeout(check, 1500));
